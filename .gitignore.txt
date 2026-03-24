@@ -1,0 +1,23 @@
+# Python bytecode y caché
+__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/
+
+# Entornos virtuales
+venv/
+env/
+.env
+
+# Datos (No subas archivos CSV o Excel gigantes a GitHub)
+data/raw/*.csv
+data/raw/*.xlsx
+data/processed/*.csv
+
+# Configuración de IDEs
+.vscode/
+.idea/
+
+# Archivos del sistema
+.DS_Store
+Thumbs.db
