@@ -31,9 +31,12 @@ To prove tangible financial value, the system includes a **Counterfactual Backte
 ├── data/
 │   ├── raw/               # Raw market prices (OMIP) and weather forecasts
 │   └── processed/         # Cleaned and merged datasets ready for modeling
+├── docs/                  # Project Documentation
+│   ├── 42578 Project Description 2026.pdf
+│   └── Executive_Summary_Group14.pdf
 ├── notebooks/             # Jupyter notebooks for EDA and model prototyping
 ├── src/                   # Core Python scripts
-│   ├── data_scraper.py    # Automated collection of futures and spot prices
+│   ├── market_data_scraper.py    # Automated collection of futures and spot prices
 │   ├── risk_model.py      # Probabilistic ML models for uncertainty quantification
 │   ├── decision_engine.py # RL agent / Heuristics logic for daily recommendations
 │   └── backtester.py      # Counterfactual simulation environment
