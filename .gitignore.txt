@@ -1,23 +1,37 @@
-# Python bytecode y caché
+# Python
 __pycache__/
-*.py[cod]
-*$py.class
-.pytest_cache/
+*.pyc
+*.pyo
+*.pyd
 
-# Entornos virtuales
+# Virtual environments
+.venv/
 venv/
 env/
-.env
 
-# Datos (No subas archivos CSV o Excel gigantes a GitHub)
-data/raw/*.csv
-data/raw/*.xlsx
-data/processed/*.csv
+# Jupyter
+.ipynb_checkpoints/
 
-# Configuración de IDEs
+# OS
+.DS_Store
+Thumbs.db
+
+# IDE
 .vscode/
 .idea/
 
-# Archivos del sistema
-.DS_Store
-Thumbs.db
+# Data outputs
+data/interim/
+data/processed/
+data/outputs/
+
+# Reports
+reports/technical_report/*.html
+reports/technical_report/*.pdf
+reports/executive_summary/*.pdf
+
+# Logs
+*.log
+
+# Environment files (optional)
+.env
