@@ -1,32 +1,128 @@
-# Data-Driven-Strategies-for-Financial-Resilience-in-Energy-Procurement
+# Data-Driven Strategies for Financial Resilience in Energy Procurement
 
-A Data-Driven Decision Support System to optimize industrial energy procurement and mitigate tail risks in the Spanish electricity market (Spot/Futures hedging). Developed for the Advanced Business Analytics course (42578) at DTU.
+A Data-Driven Decision Support System (DSS) to optimize industrial energy procurement and mitigate tail risks in the Spanish electricity market (Spot/Futures hedging). Developed for the Advanced Business Analytics course (42578) at DTU.
+
+---
 
 ## 📌 Executive Summary
-Industrial manufacturers in the Spanish electricity market (MIBEL) face extreme price volatility, where sudden Spot energy spikes can erase monthly profit margins. Traditional procurement methods force a rigid choice between expensive fixed contracts and highly vulnerable Spot market exposure, struggling to dynamically manage "tail risks".
 
-This repository contains the codebase for an **Advanced Decision Support System (DSS)**. Acting as a virtual consultant, this engine provides factory managers with daily, data-driven recommendations to optimize both financial hedging (Future contracts) and short-term operational schedules (shifting production based on weather), effectively minimizing energy costs under high uncertainty.
+Industrial manufacturers in the Spanish electricity market (MIBEL) face extreme price volatility, where sudden Spot price spikes can erase monthly profit margins. Traditional procurement strategies force a rigid choice between expensive fixed contracts and highly volatile Spot market exposure, failing to dynamically manage **tail risks**.
+
+This repository presents an **Advanced Decision Support System (DSS)** designed as a virtual consultant. The system provides daily, data-driven recommendations to optimize both:
+
+- **Financial hedging** (via futures contracts)
+- **Operational decisions** (e.g., shifting production based on external signals)
+
+The objective is to **minimize expected procurement costs under uncertainty while reducing exposure to extreme price spikes (tail risk)**.
+
+---
 
 ## ⚙️ Architecture & Methodology
-The pipeline is structured into a two-step analytics framework:
 
-1. **Risk Prediction Engine (Machine Learning):** Instead of merely predicting an average price, we train advanced predictive models to focus on uncertainty quantification. By forecasting the upper bounds of market prices (tail risks), the system assesses short- and mid-term financial exposure.
-2. **Prescriptive Decision Engine:** A decision-making algorithm (utilizing Reinforcement Learning or data-driven heuristics) ingests the risk signals. It evaluates constraints and triggers either:
-   * **Financial Actions:** e.g., "Buy M+1 futures today to lock in costs".
-   * **Operational Actions:** e.g., "Postpone production based on short-term weather forecasts".
+The solution follows a two-stage analytics framework:
+
+### 1. Risk Prediction Engine (Machine Learning)
+
+Instead of predicting only expected prices, the system focuses on **uncertainty-aware forecasting**:
+
+- Predicts **conditional quantiles** (e.g., 90th/95th percentile)
+- Captures **tail risk exposure**
+- Provides probabilistic insights into extreme price scenarios
+
+This enables a shift from point forecasting to **risk-aware decision making**.
+
+---
+
+### 2. Prescriptive Decision Engine
+
+A decision-making module transforms risk signals into actions:
+
+- **Financial Actions**
+  - Example: *Buy M+1 futures to lock in prices*
+- **Operational Actions**
+  - Example: *Shift production to avoid high-cost periods*
+
+Two approaches are considered:
+
+- Data-driven **heuristic policies** (baseline)
+- **Reinforcement Learning (RL)** (advanced extension)
+
+The system effectively solves:
+
+\[
+\text{Optimal Decision} = \arg\min \mathbb{E}[\text{Cost} \mid \text{Uncertainty}]
+\]
+
+---
 
 ## 📊 Data Strategy
-The model trains on a chronological split to ensure robust out-of-sample evaluation, utilizing two main data streams:
-* **Spot Market & Operations:** Daily average Spot prices (baseload energy cost), combined with short-term weather and renewable generation forecasts.
-* **Hedging Alternatives:** Daily Settlement Prices for "Spanish Power Base" Monthly Futures (OMIP), collected via automated Web Scraping.
+
+The model relies on a time-aware, multi-source dataset:
+
+### 🔹 Spot Market & External Drivers
+- Daily Spot electricity prices (SPEL)
+- Weather variables (temperature, wind, radiation, etc.)
+- Calendar features (seasonality, holidays)
+
+### 🔹 Hedging Alternatives
+- OMIP Futures (M+1 to M+6)
+- Prices and Open Interest
+
+### 🔹 Key Design Principle
+- Strict **chronological split** (no data leakage)
+- Designed for **real-world deployment conditions**
+
+---
 
 ## 📈 Business Impact Validation
-To prove tangible financial value, the system includes a **Counterfactual Backtest** module. It simulates procurement and production operations over an unseen testing period, comparing the costs incurred by our DSS recommendations against a standard baseline strategy. Success is quantified by total monetary savings and profit margin stabilization.
+
+To demonstrate real-world value, the project includes a:
+
+### 🔁 Counterfactual Backtesting Framework
+
+Simulates decision-making over unseen data:
+
+- Applies DSS recommendations day-by-day
+- Compares against baseline strategies:
+  - Spot-only procurement
+  - Static hedging
+
+### 📏 Evaluation Metrics
+
+- 💰 Total procurement cost
+- 📉 Cost savings vs baseline
+- ⚡ Exposure to extreme price events
+- 📊 Stability of energy costs (resilience)
+
+---
+
+## 🎯 Key Contributions
+
+- Tail-risk-aware forecasting of electricity prices
+- Integration of financial hedging and operational flexibility
+- Prescriptive analytics for decision optimization
+- Counterfactual evaluation of strategies under uncertainty
+- End-to-end Decision Support System (DSS)
+
+---
+
+## 🔁 Reproducibility
+
+The project is fully modular and reproducible:
+
+- Pipeline:  
+  `Raw Data → Cleaning → Feature Engineering → Modeling → Decision → Backtesting`
+
+- All experiments:
+  - Respect temporal ordering
+  - Avoid data leakage
+  - Are reproducible via `/src/` scripts or `/notebooks/`
 
 ---
 
 ## 📂 Repository Structure
 
+```bash
 group17_tailrisk_solutions/
 │
 ├── README.md
@@ -63,8 +159,8 @@ group17_tailrisk_solutions/
 │
 ├── notebooks/
 │   ├── 01_data_extraction/
-│   │   ├── df_extraction.ipynb
-│   │   └── 260404_OpenMeteo_Provincias.ipynb
+│   │   ├── 01_extract_omip_data.ipynb
+│   │   └── 02_extract_weather_data.ipynb
 │   │
 │   ├── 02_data_understanding/
 │   │   ├── 01_eda_omip.ipynb
@@ -94,7 +190,7 @@ group17_tailrisk_solutions/
 │   │   └── 03_sensitivity_analysis.ipynb
 │   │
 │   └── 07_reporting/
-│       ├── group17_TechnicalReport.ipynb
+│       ├── technical_report.ipynb
 │       └── executive_summary_support.ipynb
 │
 ├── src/
@@ -193,3 +289,4 @@ group17_tailrisk_solutions/
     ├── test_feature_engineering.py
     ├── test_models.py
     └── test_backtesting.py
+```
