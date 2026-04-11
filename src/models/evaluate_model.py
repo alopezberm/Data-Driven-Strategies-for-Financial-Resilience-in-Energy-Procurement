@@ -116,6 +116,17 @@ def combine_quantile_predictions(results: Sequence[QuantileModelResults]) -> pd.
                 "All quantile results must share the same evaluation index."
             )
         combined_df[f"q_{result.quantile}"] = result.y_pred
+    
+    # Enforce monotonicity across quantiles to avoid quantile crossing issues.
+    quantile_columns = sorted(
+        [col for col in combined_df.columns if col.startswith("q_")],
+        key=lambda x: float(x.replace("q_", ""))
+    )
+
+    for i in range(1, len(quantile_columns)):
+        prev_col = quantile_columns[i - 1]
+        curr_col = quantile_columns[i]
+        combined_df[curr_col] = combined_df[[prev_col, curr_col]].max(axis=1)
 
     return combined_df
 
