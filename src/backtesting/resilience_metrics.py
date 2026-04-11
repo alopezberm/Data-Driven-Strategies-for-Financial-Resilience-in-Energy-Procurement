@@ -131,11 +131,10 @@ def compute_resilience_metrics(
     share_extreme_cost_days = n_extreme_cost_days / len(df)
 
     # Coefficient of variation as a normalized stability metric.
-    coefficient_of_variation = (
-        daily_cost_volatility / average_unit_cost
-        if average_unit_cost not in [0, pd.NA] and pd.notna(average_unit_cost)
-        else pd.NA
-    )
+    if pd.notna(average_unit_cost) and average_unit_cost != 0:
+        coefficient_of_variation = daily_cost_volatility / average_unit_cost
+    else:
+        coefficient_of_variation = pd.NA
 
     metrics_df = pd.DataFrame(
         {
