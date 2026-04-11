@@ -1,0 +1,341 @@
+
+
+"""
+evaluate_model.py
+
+Utilities to compare and evaluate forecasting models for the project.
+This module is designed to work with both baseline point forecasts and
+quantile-based uncertainty forecasts.
+"""
+
+from __future__ import annotations
+
+from typing import Any, Sequence
+
+import numpy as np
+import pandas as pd
+
+from src.models.baseline_models import BaselineResults
+from src.models.quantile_models import QuantileModelResults
+
+
+class ModelEvaluationError(Exception):
+    """Raised when model evaluation inputs are inconsistent or invalid."""
+
+
+# =========================
+# Baseline / quantile summaries
+# =========================
+
+def summarize_baseline_results(results: Sequence[BaselineResults]) -> pd.DataFrame:
+    """Create a compact summary table for baseline models."""
+    if not results:
+        raise ModelEvaluationError("Baseline results list cannot be empty.")
+
+    summary_df = pd.DataFrame(
+        {
+            "model_type": "baseline",
+            "model_name": [result.model_name for result in results],
+            "quantile": pd.NA,
+            "mae": [result.mae for result in results],
+            "rmse": [result.rmse for result in results],
+            "pinball_loss": pd.NA,
+        }
+    )
+
+    return summary_df.sort_values(["rmse", "mae"]).reset_index(drop=True)
+
+
+
+def summarize_quantile_results(results: Sequence[QuantileModelResults]) -> pd.DataFrame:
+    """Create a compact summary table for quantile models."""
+    if not results:
+        raise ModelEvaluationError("Quantile results list cannot be empty.")
+
+    summary_df = pd.DataFrame(
+        {
+            "model_type": "quantile",
+            "model_name": [result.model_name for result in results],
+            "quantile": [result.quantile for result in results],
+            "mae": [result.mae for result in results],
+            "rmse": [result.rmse for result in results],
+            "pinball_loss": [result.pinball_loss for result in results],
+        }
+    )
+
+    return summary_df.sort_values(["quantile", "pinball_loss", "rmse"]).reset_index(drop=True)
+
+
+
+def compare_all_models(
+    baseline_results: Sequence[BaselineResults] | None = None,
+    quantile_results: Sequence[QuantileModelResults] | None = None,
+) -> pd.DataFrame:
+    """
+    Combine baseline and quantile model summaries into a single comparison table.
+    """
+    frames: list[pd.DataFrame] = []
+
+    if baseline_results:
+        frames.append(summarize_baseline_results(baseline_results))
+
+    if quantile_results:
+        frames.append(summarize_quantile_results(quantile_results))
+
+    if not frames:
+        raise ModelEvaluationError(
+            "At least one of baseline_results or quantile_results must be provided."
+        )
+
+    comparison_df = pd.concat(frames, axis=0, ignore_index=True)
+    return comparison_df.reset_index(drop=True)
+
+
+# =========================
+# Quantile forecast diagnostics
+# =========================
+
+def combine_quantile_predictions(results: Sequence[QuantileModelResults]) -> pd.DataFrame:
+    """
+    Combine quantile predictions into one dataframe for diagnostics and plotting.
+
+    Output columns:
+    - y_true
+    - q_<quantile>
+    """
+    if not results:
+        raise ModelEvaluationError("Quantile results list cannot be empty.")
+
+    combined_df = pd.DataFrame(index=results[0].y_true.index)
+    combined_df["y_true"] = results[0].y_true
+
+    reference_index = results[0].y_true.index
+    for result in results:
+        if not result.y_true.index.equals(reference_index):
+            raise ModelEvaluationError(
+                "All quantile results must share the same evaluation index."
+            )
+        combined_df[f"q_{result.quantile}"] = result.y_pred
+
+    return combined_df
+
+
+
+def evaluate_quantile_coverage(
+    combined_quantile_df: pd.DataFrame,
+    quantile_column: str,
+) -> dict[str, float]:
+    """
+    Evaluate empirical coverage for a single upper quantile.
+
+    Example:
+    For q_0.9, the empirical share of observations below the predicted quantile
+    should ideally be close to 0.9.
+    """
+    required_columns = {"y_true", quantile_column}
+    missing_columns = required_columns - set(combined_quantile_df.columns)
+    if missing_columns:
+        raise ModelEvaluationError(
+            f"Missing required columns for coverage evaluation: {sorted(missing_columns)}"
+        )
+
+    eval_df = combined_quantile_df[["y_true", quantile_column]].dropna().copy()
+    if eval_df.empty:
+        raise ModelEvaluationError("Coverage evaluation dataframe is empty after dropping NaNs.")
+
+    try:
+        nominal_quantile = float(quantile_column.replace("q_", ""))
+    except ValueError as exc:
+        raise ModelEvaluationError(
+            f"Could not parse nominal quantile from column name '{quantile_column}'."
+        ) from exc
+
+    empirical_coverage = float((eval_df["y_true"] <= eval_df[quantile_column]).mean())
+
+    return {
+        "quantile": nominal_quantile,
+        "empirical_coverage": empirical_coverage,
+        "coverage_error": empirical_coverage - nominal_quantile,
+        "n_obs": float(len(eval_df)),
+    }
+
+
+
+def evaluate_prediction_interval(
+    combined_quantile_df: pd.DataFrame,
+    lower_quantile_column: str,
+    upper_quantile_column: str,
+) -> dict[str, float]:
+    """
+    Evaluate a prediction interval built from two quantile columns.
+
+    Returns empirical coverage and average interval width.
+    """
+    required_columns = {"y_true", lower_quantile_column, upper_quantile_column}
+    missing_columns = required_columns - set(combined_quantile_df.columns)
+    if missing_columns:
+        raise ModelEvaluationError(
+            f"Missing required columns for interval evaluation: {sorted(missing_columns)}"
+        )
+
+    eval_df = combined_quantile_df[
+        ["y_true", lower_quantile_column, upper_quantile_column]
+    ].dropna().copy()
+
+    if eval_df.empty:
+        raise ModelEvaluationError("Interval evaluation dataframe is empty after dropping NaNs.")
+
+    if (eval_df[lower_quantile_column] > eval_df[upper_quantile_column]).any():
+        raise ModelEvaluationError(
+            "Lower quantile exceeds upper quantile for at least one observation."
+        )
+
+    within_interval = (
+        (eval_df["y_true"] >= eval_df[lower_quantile_column])
+        & (eval_df["y_true"] <= eval_df[upper_quantile_column])
+    )
+    empirical_coverage = float(within_interval.mean())
+    avg_interval_width = float(
+        (eval_df[upper_quantile_column] - eval_df[lower_quantile_column]).mean()
+    )
+
+    return {
+        "lower_quantile_column": lower_quantile_column,
+        "upper_quantile_column": upper_quantile_column,
+        "empirical_coverage": empirical_coverage,
+        "average_interval_width": avg_interval_width,
+        "n_obs": float(len(eval_df)),
+    }
+
+
+
+def evaluate_upper_tail_exceedance_rate(
+    combined_quantile_df: pd.DataFrame,
+    upper_quantile_column: str,
+) -> dict[str, float]:
+    """
+    Compute the exceedance rate above an upper quantile forecast.
+
+    For q_0.9, the exceedance rate should ideally be around 10%.
+    """
+    required_columns = {"y_true", upper_quantile_column}
+    missing_columns = required_columns - set(combined_quantile_df.columns)
+    if missing_columns:
+        raise ModelEvaluationError(
+            f"Missing required columns for exceedance evaluation: {sorted(missing_columns)}"
+        )
+
+    eval_df = combined_quantile_df[["y_true", upper_quantile_column]].dropna().copy()
+    if eval_df.empty:
+        raise ModelEvaluationError("Exceedance evaluation dataframe is empty after dropping NaNs.")
+
+    exceedance_rate = float((eval_df["y_true"] > eval_df[upper_quantile_column]).mean())
+
+    try:
+        nominal_quantile = float(upper_quantile_column.replace("q_", ""))
+    except ValueError as exc:
+        raise ModelEvaluationError(
+            f"Could not parse nominal quantile from column name '{upper_quantile_column}'."
+        ) from exc
+
+    target_exceedance = 1.0 - nominal_quantile
+
+    return {
+        "quantile": nominal_quantile,
+        "empirical_exceedance_rate": exceedance_rate,
+        "target_exceedance_rate": target_exceedance,
+        "exceedance_error": exceedance_rate - target_exceedance,
+        "n_obs": float(len(eval_df)),
+    }
+
+
+# =========================
+# Convenience report helper
+# =========================
+
+def build_quantile_diagnostics_report(
+    quantile_results: Sequence[QuantileModelResults],
+) -> dict[str, Any]:
+    """
+    Build a compact diagnostics package for quantile forecasts.
+
+    Includes:
+    - combined prediction dataframe
+    - per-quantile coverage diagnostics
+    - interval diagnostics for adjacent quantile pairs
+    - upper-tail exceedance diagnostics for upper quantiles
+    """
+    combined_df = combine_quantile_predictions(quantile_results)
+
+    quantile_columns = sorted(
+        [column for column in combined_df.columns if column.startswith("q_")],
+        key=lambda x: float(x.replace("q_", "")),
+    )
+
+    coverage_rows: list[dict[str, float]] = []
+    interval_rows: list[dict[str, float]] = []
+    exceedance_rows: list[dict[str, float]] = []
+
+    for quantile_column in quantile_columns:
+        coverage_rows.append(evaluate_quantile_coverage(combined_df, quantile_column))
+
+        quantile_value = float(quantile_column.replace("q_", ""))
+        if quantile_value >= 0.5:
+            exceedance_rows.append(
+                evaluate_upper_tail_exceedance_rate(combined_df, quantile_column)
+            )
+
+    for lower_col, upper_col in zip(quantile_columns[:-1], quantile_columns[1:]):
+        interval_rows.append(
+            evaluate_prediction_interval(combined_df, lower_col, upper_col)
+        )
+
+    diagnostics = {
+        "combined_predictions": combined_df,
+        "coverage_summary": pd.DataFrame(coverage_rows),
+        "interval_summary": pd.DataFrame(interval_rows),
+        "upper_tail_exceedance_summary": pd.DataFrame(exceedance_rows),
+    }
+
+    return diagnostics
+
+
+if __name__ == "__main__":
+    baseline_results = [
+        BaselineResults(
+            model_name="naive_last_value",
+            y_true=pd.Series([100, 110, 120]),
+            y_pred=pd.Series([98, 109, 121]),
+            mae=1.33,
+            rmse=1.41,
+        )
+    ]
+
+    q50 = QuantileModelResults(
+        quantile=0.5,
+        model_name="gbr_quantile_0.5",
+        y_true=pd.Series([100, 110, 120]),
+        y_pred=pd.Series([99, 111, 118]),
+        pinball_loss=0.9,
+        mae=1.33,
+        rmse=1.41,
+    )
+    q90 = QuantileModelResults(
+        quantile=0.9,
+        model_name="gbr_quantile_0.9",
+        y_true=pd.Series([100, 110, 120]),
+        y_pred=pd.Series([105, 116, 126]),
+        pinball_loss=0.7,
+        mae=5.67,
+        rmse=5.72,
+    )
+
+    comparison_df = compare_all_models(
+        baseline_results=baseline_results,
+        quantile_results=[q50, q90],
+    )
+    diagnostics = build_quantile_diagnostics_report([q50, q90])
+
+    print(comparison_df)
+    print(diagnostics["coverage_summary"])
+    print(diagnostics["interval_summary"])
