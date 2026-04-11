@@ -27,18 +27,169 @@ To prove tangible financial value, the system includes a **Counterfactual Backte
 
 ## 📂 Repository Structure
 
-```text
+group17_tailrisk_solutions/
+│
+├── README.md
+├── requirements.txt
+├── environment.yml
+├── .gitignore
+│
 ├── data/
-│   ├── raw/               # Raw market prices (OMIP) and weather forecasts
-│   └── processed/         # Cleaned and merged datasets ready for modeling
-├── docs/                  # Project Documentation
-│   ├── 42578 Project Description 2026.pdf
-│   └── Executive_Summary_Group14.pdf
-├── notebooks/             # Jupyter notebooks for EDA and model prototyping
-├── src/                   # Core Python scripts
-│   ├── market_data_scraper.py    # Automated collection of futures and spot prices
-│   ├── risk_model.py      # Probabilistic ML models for uncertainty quantification
-│   ├── decision_engine.py # RL agent / Heuristics logic for daily recommendations
-│   └── backtester.py      # Counterfactual simulation environment
-├── requirements.txt       # Project dependencies
-└── README.md              # You are here
+│   ├── raw/
+│   │   ├── omip/
+│   │   │   └── omip_prices_raw.csv
+│   │   ├── weather/
+│   │   │   └── openmeteo_raw.csv
+│   │   └── holidays/
+│   │       └── holidays_raw.csv
+│   │
+│   ├── interim/
+│   │   ├── omip_clean.csv
+│   │   ├── weather_clean.csv
+│   │   └── merged_interim.csv
+│   │
+│   ├── processed/
+│   │   ├── modeling_dataset.csv
+│   │   ├── train.csv
+│   │   ├── validation.csv
+│   │   ├── test.csv
+│   │   └── feature_dictionary.csv
+│   │
+│   └── outputs/
+│       ├── forecasts/
+│       ├── backtests/
+│       ├── policies/
+│       └── figures/
+│
+├── notebooks/
+│   ├── 01_data_extraction/
+│   │   ├── df_extraction.ipynb
+│   │   └── 260404_OpenMeteo_Provincias.ipynb
+│   │
+│   ├── 02_data_understanding/
+│   │   ├── 01_eda_omip.ipynb
+│   │   ├── 02_eda_weather.ipynb
+│   │   └── 03_eda_merged_dataset.ipynb
+│   │
+│   ├── 03_preprocessing/
+│   │   ├── 01_clean_omip.ipynb
+│   │   ├── 02_clean_weather.ipynb
+│   │   ├── 03_merge_datasets.ipynb
+│   │   └── 04_feature_engineering.ipynb
+│   │
+│   ├── 04_modeling/
+│   │   ├── 01_baseline_forecast.ipynb
+│   │   ├── 02_quantile_regression.ipynb
+│   │   ├── 03_tail_risk_model.ipynb
+│   │   └── 04_model_comparison.ipynb
+│   │
+│   ├── 05_decision_engine/
+│   │   ├── 01_heuristic_policy.ipynb
+│   │   ├── 02_rl_prototype.ipynb
+│   │   └── 03_policy_evaluation.ipynb
+│   │
+│   ├── 06_backtesting/
+│   │   ├── 01_counterfactual_backtest.ipynb
+│   │   ├── 02_strategy_comparison.ipynb
+│   │   └── 03_sensitivity_analysis.ipynb
+│   │
+│   └── 07_reporting/
+│       ├── group17_TechnicalReport.ipynb
+│       └── executive_summary_support.ipynb
+│
+├── src/
+│   ├── __init__.py
+│   │
+│   ├── config/
+│   │   ├── __init__.py
+│   │   ├── paths.py
+│   │   ├── settings.py
+│   │   └── constants.py
+│   │
+│   ├── data/
+│   │   ├── __init__.py
+│   │   ├── load_raw_data.py
+│   │   ├── load_processed_data.py
+│   │   ├── clean_omip.py
+│   │   ├── clean_weather.py
+│   │   ├── merge_data.py
+│   │   └── split_data.py
+│   │
+│   ├── features/
+│   │   ├── __init__.py
+│   │   ├── build_time_features.py
+│   │   ├── build_lag_features.py
+│   │   ├── build_rolling_features.py
+│   │   ├── build_future_features.py
+│   │   └── feature_selection.py
+│   │
+│   ├── models/
+│   │   ├── __init__.py
+│   │   ├── baseline_models.py
+│   │   ├── quantile_models.py
+│   │   ├── tail_risk_models.py
+│   │   ├── train_model.py
+│   │   ├── predict.py
+│   │   └── evaluate_model.py
+│   │
+│   ├── decision/
+│   │   ├── __init__.py
+│   │   ├── policy_inputs.py
+│   │   ├── heuristic_policy.py
+│   │   ├── rl_environment.py
+│   │   ├── rl_agent.py
+│   │   ├── action_rules.py
+│   │   └── policy_evaluation.py
+│   │
+│   ├── backtesting/
+│   │   ├── __init__.py
+│   │   ├── simulate_baseline.py
+│   │   ├── simulate_policy.py
+│   │   ├── compare_strategies.py
+│   │   └── resilience_metrics.py
+│   │
+│   ├── explainability/
+│   │   ├── __init__.py
+│   │   ├── shap_analysis.py
+│   │   ├── feature_importance.py
+│   │   └── scenario_explanations.py
+│   │
+│   ├── visualization/
+│   │   ├── __init__.py
+│   │   ├── plot_forecasts.py
+│   │   ├── plot_quantiles.py
+│   │   ├── plot_backtest_results.py
+│   │   └── plot_policy_actions.py
+│   │
+│   └── utils/
+│       ├── __init__.py
+│       ├── logger.py
+│       ├── metrics.py
+│       ├── helpers.py
+│       └── validation.py
+│
+├── reports/
+│   ├── figures/
+│   ├── tables/
+│   ├── executive_summary/
+│   │   └── executive_summary.pdf
+│   ├── technical_report/
+│   │   ├── technical_report.ipynb
+│   │   ├── technical_report.html
+│   │   └── technical_report.pdf
+│   └── contributions/
+│       └── statement_of_contributions.pdf
+│
+├── docs/
+│   ├── project_plan.md
+│   ├── methodology.md
+│   ├── data_description.md
+│   ├── feature_definitions.md
+│   ├── modeling_decisions.md
+│   └── backtesting_design.md
+│
+└── tests/
+    ├── test_data_pipeline.py
+    ├── test_feature_engineering.py
+    ├── test_models.py
+    └── test_backtesting.py
