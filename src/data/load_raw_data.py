@@ -86,7 +86,7 @@ def _standardize_date_column(
         )
 
     df = df.copy()
-    df[output_column] = pd.to_datetime(df[source_column], errors="coerce")
+    df[output_column] = pd.to_datetime(df[source_column], errors="coerce", utc=True).dt.tz_localize(None)
 
     if df[output_column].isna().any():
         invalid_count = int(df[output_column].isna().sum())
