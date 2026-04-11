@@ -135,16 +135,23 @@ def prepare_policy_inputs(
     validated_base_df = _validate_base_dataframe(base_df)
     quantile_df = quantile_results_to_frame(quantile_results)
 
-    if len(validated_base_df) != len(quantile_df):
+    # Align by shared source index rather than requiring equal dataframe length.
+    shared_index = quantile_df.index.intersection(validated_base_df.index)
+
+    if len(shared_index) == 0:
         raise PolicyInputsError(
-            "Base dataframe and quantile results do not have the same number of rows. "
-            "Make sure both refer to the same evaluation subset."
+            "No shared index values were found between base_df and quantile results."
         )
 
-    aligned_base_df = validated_base_df.loc[quantile_df.index].copy()
-    aligned_base_df = aligned_base_df.reset_index(drop=False).rename(columns={"index": "source_index"})
+    aligned_base_df = validated_base_df.loc[shared_index].copy()
+    quantile_df = quantile_df.loc[shared_index].copy()
 
-    quantile_df = quantile_df.copy().reset_index(drop=False).rename(columns={"index": "source_index"})
+    aligned_base_df = aligned_base_df.reset_index(drop=False).rename(
+        columns={"index": "source_index"}
+    )
+    quantile_df = quantile_df.reset_index(drop=False).rename(
+        columns={"index": "source_index"}
+    )
 
     policy_df = aligned_base_df.merge(
         quantile_df,
