@@ -198,8 +198,6 @@ class EnergyRLEnvironment:
         row = self.df.iloc[self.current_step]
 
         state = {
-            "step": self.current_step,
-            "action": action,
             "forecast_central": float(row[self.config.q50_column]),
             "forecast_tail": float(row[self.config.q90_column]),
             "current_m1_future": float(row[self.config.future_column]),
