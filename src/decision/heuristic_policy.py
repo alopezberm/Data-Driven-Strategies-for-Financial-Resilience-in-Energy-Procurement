@@ -17,28 +17,28 @@ from dataclasses import dataclass
 import pandas as pd
 
 from src.config.constants import (
+    ACTIONS,
     ALLOW_SHIFT_ON_HOLIDAYS,
     ALLOW_SHIFT_ON_WEEKENDS,
-    DEFAULT_FUTURE_COLUMN,
-    DEFAULT_HOLIDAY_COLUMN,
-    DEFAULT_Q50_COLUMN,
-    DEFAULT_Q90_COLUMN,
-    DEFAULT_SPOT_COLUMN,
-    DEFAULT_WEEKEND_COLUMN,
+    DATE_COLUMN,
     MIN_ABS_RISK_PREMIUM_TO_HEDGE,
     MIN_ABS_RISK_PREMIUM_TO_SHIFT,
     MIN_REL_RISK_PREMIUM_TO_HEDGE,
     MIN_REL_RISK_PREMIUM_TO_SHIFT,
+    POLICY_REQUIRED_COLUMNS,
+    PRIMARY_FUTURE_COLUMN,
+    Q50_COLUMN,
+    Q90_COLUMN,
+    SPOT_PRICE_COLUMN,
 )
 from src.config.settings import PolicySettings, get_default_settings
 from src.decision.action_rules import ActionRuleConfig, apply_action_rules
 
 
-SUPPORTED_ACTIONS = {
-    "do_nothing",
-    "buy_m1_future",
-    "shift_production",
-}
+HOLIDAY_COLUMN = "Is_national_holiday"
+WEEKEND_COLUMN = "is_weekend"
+
+SUPPORTED_ACTIONS = set(ACTIONS)
 
 
 class HeuristicPolicyError(Exception):
@@ -50,12 +50,12 @@ class HeuristicPolicyError(Exception):
 class PolicyConfig:
     """Configuration container for the heuristic policy."""
 
-    q50_column: str = DEFAULT_Q50_COLUMN
-    q90_column: str = DEFAULT_Q90_COLUMN
-    spot_column: str = DEFAULT_SPOT_COLUMN
-    future_column: str = DEFAULT_FUTURE_COLUMN
-    holiday_column: str = DEFAULT_HOLIDAY_COLUMN
-    weekend_column: str = DEFAULT_WEEKEND_COLUMN
+    q50_column: str = Q50_COLUMN
+    q90_column: str = Q90_COLUMN
+    spot_column: str = SPOT_PRICE_COLUMN
+    future_column: str = PRIMARY_FUTURE_COLUMN
+    holiday_column: str = HOLIDAY_COLUMN
+    weekend_column: str = WEEKEND_COLUMN
 
     # Risk thresholds
     min_abs_risk_premium_to_hedge: float = MIN_ABS_RISK_PREMIUM_TO_HEDGE
@@ -87,6 +87,16 @@ def get_default_policy_config() -> PolicyConfig:
     settings = get_default_settings()
     return PolicyConfig.from_policy_settings(settings.policy)
 
+
+def _validate_supported_actions() -> None:
+    """Validate that the centralized action catalog matches policy expectations."""
+    expected_actions = {"do_nothing", "buy_m1_future", "shift_production"}
+    if SUPPORTED_ACTIONS != expected_actions:
+        raise HeuristicPolicyError(
+            f"SUPPORTED_ACTIONS does not match the expected policy actions: {sorted(expected_actions)}"
+        )
+
+
 # =========================
 # Validation helpers
 # =========================
@@ -96,22 +106,24 @@ def _validate_input_dataframe(df: pd.DataFrame) -> pd.DataFrame:
     if df.empty:
         raise HeuristicPolicyError("Input dataframe is empty.")
 
-    if "date" not in df.columns:
-        raise HeuristicPolicyError("Input dataframe must contain a 'date' column.")
+    if DATE_COLUMN not in df.columns:
+        raise HeuristicPolicyError(
+            f"Input dataframe must contain a '{DATE_COLUMN}' column."
+        )
 
     validated_df = df.copy()
-    validated_df["date"] = pd.to_datetime(validated_df["date"], errors="coerce")
+    validated_df[DATE_COLUMN] = pd.to_datetime(validated_df[DATE_COLUMN], errors="coerce")
 
-    if validated_df["date"].isna().any():
-        invalid_count = int(validated_df["date"].isna().sum())
+    if validated_df[DATE_COLUMN].isna().any():
+        invalid_count = int(validated_df[DATE_COLUMN].isna().sum())
         raise HeuristicPolicyError(
             f"Found {invalid_count} invalid date values in policy input dataframe."
         )
 
-    if validated_df["date"].duplicated().any():
+    if validated_df[DATE_COLUMN].duplicated().any():
         raise HeuristicPolicyError("Policy input dataframe contains duplicated dates.")
 
-    return validated_df.sort_values("date").reset_index(drop=True)
+    return validated_df.sort_values(DATE_COLUMN).reset_index(drop=True)
 
 
 
@@ -123,6 +135,9 @@ def _validate_required_columns(df: pd.DataFrame, config: PolicyConfig) -> None:
         config.spot_column,
         config.future_column,
     ]
+
+    if required_columns == POLICY_REQUIRED_COLUMNS[1:]:
+        required_columns = list(POLICY_REQUIRED_COLUMNS[1:])
 
     missing_columns = [column for column in required_columns if column not in df.columns]
     if missing_columns:
@@ -219,6 +234,7 @@ def apply_heuristic_policy(
     - human-readable explanation
     """
     config = get_default_policy_config() if config is None else config
+    _validate_supported_actions()
 
     policy_df = _validate_input_dataframe(df)
     _validate_required_columns(policy_df, config)
@@ -272,13 +288,13 @@ def summarize_policy_actions(policy_df: pd.DataFrame) -> pd.DataFrame:
 if __name__ == "__main__":
     example_df = pd.DataFrame(
         {
-            "date": pd.date_range("2025-01-01", periods=6, freq="D"),
-            "Spot_Price_SPEL": [70, 75, 80, 78, 82, 76],
-            "Future_M1_Price": [72, 73, 74, 75, 76, 77],
-            "q_0.5": [74, 76, 79, 80, 81, 78],
-            "q_0.9": [85, 88, 92, 86, 95, 84],
-            "is_weekend": [0, 0, 0, 1, 1, 0],
-            "Is_national_holiday": [0, 0, 0, 0, 0, 1],
+            DATE_COLUMN: pd.date_range("2025-01-01", periods=6, freq="D"),
+            SPOT_PRICE_COLUMN: [70, 75, 80, 78, 82, 76],
+            PRIMARY_FUTURE_COLUMN: [72, 73, 74, 75, 76, 77],
+            Q50_COLUMN: [74, 76, 79, 80, 81, 78],
+            Q90_COLUMN: [85, 88, 92, 86, 95, 84],
+            WEEKEND_COLUMN: [0, 0, 0, 1, 1, 0],
+            HOLIDAY_COLUMN: [0, 0, 0, 0, 0, 1],
         }
     )
 
@@ -289,7 +305,7 @@ if __name__ == "__main__":
     action_summary = summarize_policy_actions(policy_output)
 
     print(policy_output[[
-        "date",
+        DATE_COLUMN,
         "forecast_central",
         "forecast_tail",
         "current_m1_future",

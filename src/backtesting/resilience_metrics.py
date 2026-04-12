@@ -1,5 +1,3 @@
-
-
 """
 resilience_metrics.py
 
@@ -14,13 +12,34 @@ from typing import Sequence
 
 import pandas as pd
 
+from src.config.constants import (
+    DATE_COLUMN,
+    DEFAULT_REFERENCE_STRATEGY,
+    STRATEGY_HEURISTIC_POLICY,
+    STRATEGY_SPOT_ONLY,
+    STRATEGY_STATIC_HEDGE,
+)
+
 
 REQUIRED_SIMULATION_COLUMNS = {
-    "date",
+    DATE_COLUMN,
     "strategy_name",
     "total_cost",
     "energy_volume_mwh",
 }
+
+
+def _validate_strategy_catalog() -> None:
+    """Validate the centralized strategy catalog used by this module."""
+    expected_strategies = {
+        STRATEGY_SPOT_ONLY,
+        STRATEGY_STATIC_HEDGE,
+        STRATEGY_HEURISTIC_POLICY,
+    }
+    if {STRATEGY_SPOT_ONLY, STRATEGY_STATIC_HEDGE, STRATEGY_HEURISTIC_POLICY} != expected_strategies:
+        raise ResilienceMetricsError(
+            "Centralized strategy constants are inconsistent."
+        )
 
 
 class ResilienceMetricsError(Exception):
@@ -43,15 +62,15 @@ def _validate_simulation_df(simulation_df: pd.DataFrame) -> pd.DataFrame:
         )
 
     validated_df = simulation_df.copy()
-    validated_df["date"] = pd.to_datetime(validated_df["date"], errors="coerce")
+    validated_df[DATE_COLUMN] = pd.to_datetime(validated_df[DATE_COLUMN], errors="coerce")
 
-    if validated_df["date"].isna().any():
-        invalid_count = int(validated_df["date"].isna().sum())
+    if validated_df[DATE_COLUMN].isna().any():
+        invalid_count = int(validated_df[DATE_COLUMN].isna().sum())
         raise ResilienceMetricsError(
             f"Found {invalid_count} invalid date values in simulation dataframe."
         )
 
-    if validated_df["date"].duplicated().any():
+    if validated_df[DATE_COLUMN].duplicated().any():
         raise ResilienceMetricsError("Simulation dataframe contains duplicated dates.")
 
     validated_df["total_cost"] = pd.to_numeric(validated_df["total_cost"], errors="coerce")
@@ -67,12 +86,14 @@ def _validate_simulation_df(simulation_df: pd.DataFrame) -> pd.DataFrame:
             "Simulation dataframe contains invalid energy_volume_mwh values."
         )
 
-    return validated_df.sort_values("date").reset_index(drop=True)
+    return validated_df.sort_values(DATE_COLUMN).reset_index(drop=True)
 
 
 
 def _validate_simulation_collection(simulation_dfs: Sequence[pd.DataFrame]) -> list[pd.DataFrame]:
     """Validate a collection of simulation dataframes with unique strategy names."""
+    _validate_strategy_catalog()
+
     if not simulation_dfs:
         raise ResilienceMetricsError("simulation_dfs cannot be empty.")
 
@@ -260,7 +281,7 @@ def compare_extreme_days_against_reference(
     threshold = float(reference_df["total_cost"].quantile(extreme_cost_quantile))
     extreme_reference_days = reference_df.loc[
         reference_df["total_cost"] >= threshold,
-        ["date", "total_cost"],
+        [DATE_COLUMN, "total_cost"],
     ].rename(columns={"total_cost": f"total_cost_{reference_strategy_name}"})
 
     if extreme_reference_days.empty:
@@ -275,16 +296,16 @@ def compare_extreme_days_against_reference(
         if strategy_name == reference_strategy_name:
             continue
 
-        strategy_subset = strategy_df[["date", "total_cost"]].rename(
+        strategy_subset = strategy_df[[DATE_COLUMN, "total_cost"]].rename(
             columns={"total_cost": f"total_cost_{strategy_name}"}
         )
-        comparison_df = comparison_df.merge(strategy_subset, on="date", how="left")
+        comparison_df = comparison_df.merge(strategy_subset, on=DATE_COLUMN, how="left")
         comparison_df[f"cost_difference_{strategy_name}_vs_{reference_strategy_name}"] = (
             comparison_df[f"total_cost_{strategy_name}"]
             - comparison_df[f"total_cost_{reference_strategy_name}"]
         )
 
-    return comparison_df.sort_values("date").reset_index(drop=True)
+    return comparison_df.sort_values(DATE_COLUMN).reset_index(drop=True)
 
 
 # =========================
@@ -293,7 +314,7 @@ def compare_extreme_days_against_reference(
 
 def build_resilience_report(
     simulation_dfs: Sequence[pd.DataFrame],
-    reference_strategy_name: str = "spot_only",
+    reference_strategy_name: str = DEFAULT_REFERENCE_STRATEGY,
     extreme_cost_quantile: float = 0.90,
 ) -> dict[str, pd.DataFrame]:
     """
@@ -330,8 +351,8 @@ if __name__ == "__main__":
 
     spot_only_df = pd.DataFrame(
         {
-            "date": dates,
-            "strategy_name": "spot_only",
+            DATE_COLUMN: dates,
+            "strategy_name": STRATEGY_SPOT_ONLY,
             "energy_volume_mwh": [10] * 8,
             "total_cost": [800, 1200, 950, 700, 1500, 880, 910, 1400],
         }
@@ -339,8 +360,8 @@ if __name__ == "__main__":
 
     static_hedge_df = pd.DataFrame(
         {
-            "date": dates,
-            "strategy_name": "static_hedge",
+            DATE_COLUMN: dates,
+            "strategy_name": STRATEGY_STATIC_HEDGE,
             "energy_volume_mwh": [10] * 8,
             "total_cost": [850, 930, 920, 880, 980, 900, 905, 970],
         }
@@ -348,8 +369,8 @@ if __name__ == "__main__":
 
     heuristic_policy_df = pd.DataFrame(
         {
-            "date": dates,
-            "strategy_name": "heuristic_policy",
+            DATE_COLUMN: dates,
+            "strategy_name": STRATEGY_HEURISTIC_POLICY,
             "energy_volume_mwh": [10] * 8,
             "total_cost": [780, 910, 890, 760, 940, 860, 875, 930],
         }
@@ -357,7 +378,7 @@ if __name__ == "__main__":
 
     report = build_resilience_report(
         [spot_only_df, static_hedge_df, heuristic_policy_df],
-        reference_strategy_name="spot_only",
+        reference_strategy_name=STRATEGY_SPOT_ONLY,
         extreme_cost_quantile=0.90,
     )
 

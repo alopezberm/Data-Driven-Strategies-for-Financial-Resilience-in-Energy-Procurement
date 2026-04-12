@@ -1,5 +1,3 @@
-
-
 """
 build_rolling_features.py
 
@@ -12,23 +10,40 @@ from __future__ import annotations
 
 import pandas as pd
 
+from src.config.constants import DATE_COLUMN, DEFAULT_ROLLING_WINDOWS, PRIMARY_FUTURE_COLUMN, TARGET_COLUMN
+from src.config.settings import TrainingSettings, get_default_settings
 
-DEFAULT_ROLLING_CONFIG = {
-    "Spot_Price_SPEL": {
-        "mean": [3, 7, 14, 28],
-        "std": [3, 7, 14, 28],
-        "min": [7, 14, 28],
-        "max": [7, 14, 28],
-    },
-    "Future_M1_Price": {
-        "mean": [7, 14, 28],
-        "std": [7, 14, 28],
-    },
-    "Future_M1_OpenInterest": {
-        "mean": [7, 14, 28],
-        "std": [7, 14, 28],
-    },
-}
+
+def get_default_rolling_config(training_settings: TrainingSettings | None = None) -> dict[str, dict[str, list[int]]]:
+    """Build the default rolling-feature configuration from project settings."""
+    if training_settings is None:
+        training_settings = get_default_settings().training
+
+    rolling_windows = (
+        list(training_settings.rolling_windows)
+        if training_settings.rolling_windows
+        else list(DEFAULT_ROLLING_WINDOWS)
+    )
+    short_and_long_windows = sorted({window for window in [3, *rolling_windows] if window > 0})
+    medium_and_long_windows = sorted({window for window in rolling_windows if window >= 7})
+
+    return {
+        TARGET_COLUMN: {
+            "mean": short_and_long_windows,
+            "std": short_and_long_windows,
+            "min": medium_and_long_windows,
+            "max": medium_and_long_windows,
+        },
+        PRIMARY_FUTURE_COLUMN: {
+            "mean": medium_and_long_windows,
+            "std": medium_and_long_windows,
+        },
+        "Future_M1_OpenInterest": {
+            "mean": medium_and_long_windows,
+            "std": medium_and_long_windows,
+        },
+    }
+
 
 SUPPORTED_OPERATIONS = {"mean", "std", "min", "max"}
 
@@ -53,24 +68,26 @@ def _validate_input_dataframe(df: pd.DataFrame) -> pd.DataFrame:
     if df.empty:
         raise RollingFeaturesError("Input dataframe is empty.")
 
-    if "date" not in df.columns:
-        raise RollingFeaturesError("Input dataframe must contain a 'date' column.")
+    if DATE_COLUMN not in df.columns:
+        raise RollingFeaturesError(
+            f"Input dataframe must contain a '{DATE_COLUMN}' column."
+        )
 
     df = df.copy()
-    df["date"] = pd.to_datetime(df["date"], errors="coerce")
+    df[DATE_COLUMN] = pd.to_datetime(df[DATE_COLUMN], errors="coerce")
 
-    if df["date"].isna().any():
-        invalid_count = int(df["date"].isna().sum())
+    if df[DATE_COLUMN].isna().any():
+        invalid_count = int(df[DATE_COLUMN].isna().sum())
         raise RollingFeaturesError(
             f"Found {invalid_count} invalid date values while building rolling features."
         )
 
-    if df["date"].duplicated().any():
+    if df[DATE_COLUMN].duplicated().any():
         raise RollingFeaturesError(
             "Input dataframe contains duplicated dates. Rolling features require unique chronological rows."
         )
 
-    df = df.sort_values("date").reset_index(drop=True)
+    df = df.sort_values(DATE_COLUMN).reset_index(drop=True)
     return df
 
 
@@ -101,6 +118,11 @@ def _validate_rolling_config(rolling_config: dict[str, dict[str, list[int]]]) ->
             if not isinstance(windows, list) or not windows:
                 raise RollingFeaturesError(
                     f"Window list for operation '{operation}' in column '{column}' must be a non-empty list."
+                )
+
+            if len(set(windows)) != len(windows):
+                raise RollingFeaturesError(
+                    f"Window list for operation '{operation}' in column '{column}' contains duplicated values."
                 )
 
             if any((not isinstance(window, int) or window <= 0) for window in windows):
@@ -169,7 +191,7 @@ def build_rolling_features(
     Parameters
     ----------
     df : pd.DataFrame
-        Input dataframe containing a `date` column and time-dependent variables.
+        Input dataframe containing the configured date column and time-dependent variables.
     rolling_config : dict[str, dict[str, list[int]]] | None, optional
         Dictionary mapping column names to rolling operations and their windows.
         If None, a default configuration tailored to the energy procurement
@@ -181,7 +203,7 @@ def build_rolling_features(
         Dataframe enriched with rolling features.
     """
     df = _validate_input_dataframe(df)
-    rolling_config = DEFAULT_ROLLING_CONFIG if rolling_config is None else rolling_config
+    rolling_config = get_default_rolling_config() if rolling_config is None else rolling_config
     _validate_rolling_config(rolling_config)
 
     df = _create_rolling_features(df, rolling_config)
@@ -191,9 +213,9 @@ def build_rolling_features(
 if __name__ == "__main__":
     example_df = pd.DataFrame(
         {
-            "date": pd.date_range("2024-01-01", periods=40, freq="D"),
-            "Spot_Price_SPEL": range(40),
-            "Future_M1_Price": range(100, 140),
+            DATE_COLUMN: pd.date_range("2024-01-01", periods=40, freq="D"),
+            TARGET_COLUMN: range(40),
+            PRIMARY_FUTURE_COLUMN: range(100, 140),
             "Future_M1_OpenInterest": range(1000, 1040),
         }
     )

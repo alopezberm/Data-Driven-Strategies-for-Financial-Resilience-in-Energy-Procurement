@@ -1,5 +1,3 @@
-
-
 """
 constants.py
 
@@ -15,20 +13,26 @@ from __future__ import annotations
 # Core dataset / modeling constants
 # =========================
 
-TARGET_COLUMN = "Spot_Price_SPEL"
 DATE_COLUMN = "date"
+TARGET_COLUMN = "Spot_Price_SPEL"
 DEFAULT_FORECAST_HORIZON = 1
 
 DEFAULT_QUANTILES = [0.5, 0.9, 0.95]
 DEFAULT_ROLLING_WINDOWS = [7, 14, 28]
 DEFAULT_LAG_STEPS = [1, 2, 3, 7, 14, 28]
 
+# Reusable aliases
+SPOT_PRICE_COLUMN = TARGET_COLUMN
+PRIMARY_FUTURE_COLUMN = "Future_M1_Price"
+PRIMARY_OPEN_INTEREST_COLUMN = "Future_M1_OpenInterest"
+SECONDARY_FUTURE_COLUMN = "Future_M2_Price"
+SECONDARY_OPEN_INTEREST_COLUMN = "Future_M2_OpenInterest"
+
 
 # =========================
 # Column-name conventions
 # =========================
 
-SPOT_PRICE_COLUMN = "Spot_Price_SPEL"
 FUTURE_PRICE_COLUMNS = [
     "Future_M1_Price",
     "Future_M2_Price",
@@ -47,12 +51,18 @@ OPEN_INTEREST_COLUMNS = [
     "Future_M6_OpenInterest",
 ]
 
+# Quantile column helpers
+Q50_COLUMN = "q_0.5"
+Q90_COLUMN = "q_0.9"
+Q95_COLUMN = "q_0.95"
+
+# Required columns for policy/backtesting inputs
 POLICY_REQUIRED_COLUMNS = [
-    "date",
-    "Spot_Price_SPEL",
-    "Future_M1_Price",
-    "q_0.5",
-    "q_0.9",
+    DATE_COLUMN,
+    SPOT_PRICE_COLUMN,
+    PRIMARY_FUTURE_COLUMN,
+    Q50_COLUMN,
+    Q90_COLUMN,
 ]
 
 
@@ -67,13 +77,6 @@ DEFAULT_DAILY_VOLUME = 1.0
 # =========================
 # Heuristic policy thresholds
 # =========================
-
-DEFAULT_Q50_COLUMN = "q_0.5"
-DEFAULT_Q90_COLUMN = "q_0.9"
-DEFAULT_SPOT_COLUMN = "Spot_Price_SPEL"
-DEFAULT_FUTURE_COLUMN = "Future_M1_Price"
-DEFAULT_HOLIDAY_COLUMN = "Is_national_holiday"
-DEFAULT_WEEKEND_COLUMN = "is_weekend"
 
 MIN_ABS_RISK_PREMIUM_TO_HEDGE = 8.0
 MIN_REL_RISK_PREMIUM_TO_HEDGE = 0.10
@@ -94,6 +97,25 @@ ALLOW_SHIFT_ON_WEEKENDS_RULE = True
 
 
 # =========================
+# Actions & strategies
+# =========================
+
+ACTIONS = [
+    "do_nothing",
+    "buy_m1_future",
+    "shift_production",
+]
+
+ACTION_DO_NOTHING = ACTIONS[0]
+ACTION_BUY_M1_FUTURE = ACTIONS[1]
+ACTION_SHIFT_PRODUCTION = ACTIONS[2]
+
+STRATEGY_SPOT_ONLY = "spot_only"
+STRATEGY_STATIC_HEDGE = "static_hedge"
+STRATEGY_HEURISTIC_POLICY = "heuristic_policy"
+
+
+# =========================
 # Policy simulation defaults
 # =========================
 
@@ -106,8 +128,18 @@ DEFAULT_SHIFT_PENALTY_PER_MWH = 2.0
 # Backtesting defaults
 # =========================
 
-DEFAULT_REFERENCE_STRATEGY = "spot_only"
+DEFAULT_REFERENCE_STRATEGY = STRATEGY_SPOT_ONLY
 DEFAULT_EXTREME_COST_QUANTILE = 0.90
+
+
+# =========================
+# Output names / folders
+# =========================
+
+OUTPUT_FORECASTS_DIRNAME = "forecasts"
+OUTPUT_POLICIES_DIRNAME = "policies"
+OUTPUT_BACKTESTS_DIRNAME = "backtests"
+OUTPUT_FIGURES_DIRNAME = "figures"
 
 
 # =========================

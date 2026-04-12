@@ -21,7 +21,7 @@ def get_logger(
     date_format: str = DEFAULT_DATE_FORMAT,
 ) -> logging.Logger:
     """
-    Create or retrieve a configured project logger.
+    Create or retrieve a project logger backed by a shared root handler.
 
     Parameters
     ----------
@@ -40,20 +40,22 @@ def get_logger(
         Configured logger instance.
     """
     logger = logging.getLogger(name)
+    root_logger = logging.getLogger()
 
-    if not logger.handlers:
+    if not root_logger.handlers:
         handler = logging.StreamHandler()
         formatter = logging.Formatter(fmt=log_format, datefmt=date_format)
         handler.setFormatter(formatter)
-        logger.addHandler(handler)
+        root_logger.addHandler(handler)
 
+    root_logger.setLevel(level)
     logger.setLevel(level)
-    logger.propagate = False
+    logger.propagate = True
     return logger
 
 
 def set_project_log_level(level: int) -> None:
-    """Set the root logging level for the current Python process."""
+    """Set the shared root logging level for the current Python process."""
     logging.getLogger().setLevel(level)
 
 

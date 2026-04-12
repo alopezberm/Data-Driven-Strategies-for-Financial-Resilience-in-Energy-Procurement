@@ -1,5 +1,3 @@
-
-
 """
 policy_inputs.py
 
@@ -13,6 +11,7 @@ from typing import Sequence
 
 import pandas as pd
 
+from src.config.constants import DATE_COLUMN, POLICY_REQUIRED_COLUMNS, PRIMARY_FUTURE_COLUMN, Q50_COLUMN, Q90_COLUMN, SPOT_PRICE_COLUMN
 from src.models.quantile_models import QuantileModelResults
 
 
@@ -20,11 +19,7 @@ class PolicyInputsError(Exception):
     """Raised when policy input tables cannot be prepared safely."""
 
 
-REQUIRED_BASE_COLUMNS = {
-    "date",
-    "Spot_Price_SPEL",
-    "Future_M1_Price",
-}
+REQUIRED_BASE_COLUMNS = set(POLICY_REQUIRED_COLUMNS[:3])
 
 OPTIONAL_USEFUL_COLUMNS = [
     "is_weekend",
@@ -37,6 +32,11 @@ OPTIONAL_USEFUL_COLUMNS = [
     "temperature_2m_mean",
     "wind_speed_10m_max",
 ]
+
+
+def _format_quantile_column(quantile: float) -> str:
+    """Format a quantile value into the project's quantile-column naming convention."""
+    return f"q_{quantile:g}"
 
 
 # =========================
@@ -55,18 +55,18 @@ def _validate_base_dataframe(df: pd.DataFrame) -> pd.DataFrame:
         )
 
     validated_df = df.copy()
-    validated_df["date"] = pd.to_datetime(validated_df["date"], errors="coerce")
+    validated_df[DATE_COLUMN] = pd.to_datetime(validated_df[DATE_COLUMN], errors="coerce")
 
-    if validated_df["date"].isna().any():
-        invalid_count = int(validated_df["date"].isna().sum())
+    if validated_df[DATE_COLUMN].isna().any():
+        invalid_count = int(validated_df[DATE_COLUMN].isna().sum())
         raise PolicyInputsError(
             f"Found {invalid_count} invalid date values in the base dataframe."
         )
 
-    if validated_df["date"].duplicated().any():
+    if validated_df[DATE_COLUMN].duplicated().any():
         raise PolicyInputsError("Base dataframe contains duplicated dates.")
 
-    return validated_df.sort_values("date").reset_index(drop=True)
+    return validated_df.sort_values(DATE_COLUMN).reset_index(drop=False)
 
 
 
@@ -101,7 +101,7 @@ def quantile_results_to_frame(results: Sequence[QuantileModelResults]) -> pd.Dat
     quantile_df["y_true"] = results[0].y_true
 
     for result in sorted(results, key=lambda x: x.quantile):
-        quantile_df[f"q_{result.quantile}"] = result.y_pred
+        quantile_df[_format_quantile_column(result.quantile)] = result.y_pred
 
     return quantile_df
 
@@ -136,22 +136,18 @@ def prepare_policy_inputs(
     quantile_df = quantile_results_to_frame(quantile_results)
 
     # Align by shared source index rather than requiring equal dataframe length.
-    shared_index = quantile_df.index.intersection(validated_base_df.index)
+    shared_index = quantile_df.index.intersection(validated_base_df["index"])
 
     if len(shared_index) == 0:
         raise PolicyInputsError(
             "No shared index values were found between base_df and quantile results."
         )
 
-    aligned_base_df = validated_base_df.loc[shared_index].copy()
+    aligned_base_df = validated_base_df[validated_base_df["index"].isin(shared_index)].copy()
     quantile_df = quantile_df.loc[shared_index].copy()
 
-    aligned_base_df = aligned_base_df.reset_index(drop=False).rename(
-        columns={"index": "source_index"}
-    )
-    quantile_df = quantile_df.reset_index(drop=False).rename(
-        columns={"index": "source_index"}
-    )
+    aligned_base_df = aligned_base_df.rename(columns={"index": "source_index"})
+    quantile_df = quantile_df.reset_index(drop=False).rename(columns={"index": "source_index"})
 
     policy_df = aligned_base_df.merge(
         quantile_df,
@@ -162,9 +158,9 @@ def prepare_policy_inputs(
 
     # Keep a clean and predictable column order.
     core_columns = [
-        "date",
-        "Spot_Price_SPEL",
-        "Future_M1_Price",
+        DATE_COLUMN,
+        SPOT_PRICE_COLUMN,
+        PRIMARY_FUTURE_COLUMN,
     ]
     quantile_columns = sorted(
         [column for column in policy_df.columns if column.startswith("q_")],
@@ -195,7 +191,7 @@ def prepare_policy_inputs(
             f"The prepared policy dataframe is missing expected columns: {missing_selected}"
         )
 
-    policy_df = policy_df[selected_columns].sort_values("date").reset_index(drop=True)
+    policy_df = policy_df[selected_columns].sort_values(DATE_COLUMN).reset_index(drop=True)
 
     return policy_df
 
@@ -209,8 +205,8 @@ def summarize_policy_inputs(policy_df: pd.DataFrame) -> pd.DataFrame:
     summary = pd.DataFrame(
         {
             "n_rows": [int(len(policy_df))],
-            "date_min": [policy_df["date"].min()],
-            "date_max": [policy_df["date"].max()],
+            "date_min": [policy_df[DATE_COLUMN].min()],
+            "date_max": [policy_df[DATE_COLUMN].max()],
             "n_quantile_columns": [
                 int(sum(column.startswith("q_") for column in policy_df.columns))
             ],
@@ -226,9 +222,9 @@ def summarize_policy_inputs(policy_df: pd.DataFrame) -> pd.DataFrame:
 if __name__ == "__main__":
     base_df = pd.DataFrame(
         {
-            "date": pd.date_range("2025-01-01", periods=4, freq="D"),
-            "Spot_Price_SPEL": [70, 75, 80, 78],
-            "Future_M1_Price": [72, 73, 74, 75],
+            DATE_COLUMN: pd.date_range("2025-01-01", periods=4, freq="D"),
+            SPOT_PRICE_COLUMN: [70, 75, 80, 78],
+            PRIMARY_FUTURE_COLUMN: [72, 73, 74, 75],
             "is_weekend": [0, 0, 1, 1],
             "Is_national_holiday": [0, 0, 0, 0],
             "daily_energy_mwh": [10, 10, 10, 10],
@@ -256,5 +252,6 @@ if __name__ == "__main__":
     )
 
     policy_df = prepare_policy_inputs(base_df, [q50, q90])
+    assert Q50_COLUMN in policy_df.columns and Q90_COLUMN in policy_df.columns
     print(policy_df)
     print(summarize_policy_inputs(policy_df))

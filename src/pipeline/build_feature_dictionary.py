@@ -14,15 +14,20 @@ from __future__ import annotations
 
 import pandas as pd
 
+from src.config.constants import DATE_COLUMN
 from src.config.paths import FEATURE_DICTIONARY_FILE, MODELING_DATASET_FILE
+from src.utils.logger import get_logger
 
 
 class FeatureDictionaryError(Exception):
     """Raised when the feature dictionary cannot be built safely."""
 
 
+logger = get_logger(__name__)
+
+
 BASE_DESCRIPTIONS = {
-    "date": "Calendar date of the observation.",
+    DATE_COLUMN: "Calendar date of the observation.",
     "Spot_Price_SPEL": "Observed daily spot electricity price.",
     "Future_M1_Price": "Observed daily price of the front-month futures contract.",
     "Future_M1_OpenInterest": "Observed daily open interest for the front-month futures contract.",
@@ -75,7 +80,7 @@ BASE_DESCRIPTIONS = {
 
 def _infer_feature_group(column_name: str) -> str:
     """Infer a broad feature group from the column name."""
-    if column_name == "date":
+    if column_name == DATE_COLUMN:
         return "identifier"
 
     if column_name.startswith("Spot_Price"):
@@ -256,11 +261,14 @@ def _infer_description(column_name: str) -> str:
 
 def build_feature_dictionary() -> pd.DataFrame:
     """Build and save the feature dictionary from the modeling dataset."""
+    logger.info("Starting feature dictionary build...")
+
     if not MODELING_DATASET_FILE.exists():
         raise FeatureDictionaryError(
             f"Modeling dataset not found: {MODELING_DATASET_FILE}. Run build_modeling_dataset first."
         )
 
+    logger.info(f"Loading modeling dataset from {MODELING_DATASET_FILE}")
     df = pd.read_csv(MODELING_DATASET_FILE)
 
     rows: list[dict[str, object]] = []
@@ -281,12 +289,17 @@ def build_feature_dictionary() -> pd.DataFrame:
         ["feature_group", "feature_name"]
     ).reset_index(drop=True)
 
+    logger.info(f"Feature dictionary shape: {feature_dictionary_df.shape}")
+
+    FEATURE_DICTIONARY_FILE.parent.mkdir(parents=True, exist_ok=True)
     feature_dictionary_df.to_csv(FEATURE_DICTIONARY_FILE, index=False)
+
+    logger.info(f"Saved feature dictionary to {FEATURE_DICTIONARY_FILE}")
     return feature_dictionary_df
 
 
 if __name__ == "__main__":
     dictionary_df = build_feature_dictionary()
-    print("Feature dictionary created successfully.")
-    print(f"Shape: {dictionary_df.shape}")
-    print(f"Saved to: {FEATURE_DICTIONARY_FILE}")
+    logger.info("Feature dictionary created successfully.")
+    logger.info(f"Shape: {dictionary_df.shape}")
+    logger.info(f"Saved to: {FEATURE_DICTIONARY_FILE}")

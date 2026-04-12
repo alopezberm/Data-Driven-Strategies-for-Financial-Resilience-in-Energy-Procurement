@@ -9,12 +9,33 @@ introduce leakage when built from the date column alone.
 from __future__ import annotations
 
 import numpy as np
-
 import pandas as pd
+
+from src.config.constants import DATE_COLUMN
 
 
 class TimeFeaturesError(Exception):
     """Raised when time features cannot be created safely."""
+
+
+DAYS_IN_WEEK = 7
+MONTHS_IN_YEAR = 12
+DAYS_IN_YEAR = 365.25
+
+MONTH_TO_SEASON = {
+    12: 1,
+    1: 1,
+    2: 1,
+    3: 2,
+    4: 2,
+    5: 2,
+    6: 3,
+    7: 3,
+    8: 3,
+    9: 4,
+    10: 4,
+    11: 4,
+}
 
 
 # =========================
@@ -23,21 +44,23 @@ class TimeFeaturesError(Exception):
 
 def _validate_date_column(df: pd.DataFrame) -> pd.DataFrame:
     """
-    Validate that the dataframe contains a usable `date` column.
+    Validate that the dataframe contains a usable date column.
 
     Returns
     -------
     pd.DataFrame
-        Copy of the dataframe with `date` coerced to datetime.
+        Copy of the dataframe with the date column coerced to datetime.
     """
-    if "date" not in df.columns:
-        raise TimeFeaturesError("Input dataframe must contain a 'date' column.")
+    if DATE_COLUMN not in df.columns:
+        raise TimeFeaturesError(
+            f"Input dataframe must contain a '{DATE_COLUMN}' column."
+        )
 
     df = df.copy()
-    df["date"] = pd.to_datetime(df["date"], errors="coerce")
+    df[DATE_COLUMN] = pd.to_datetime(df[DATE_COLUMN], errors="coerce")
 
-    if df["date"].isna().any():
-        invalid_count = int(df["date"].isna().sum())
+    if df[DATE_COLUMN].isna().any():
+        invalid_count = int(df[DATE_COLUMN].isna().sum())
         raise TimeFeaturesError(
             f"Found {invalid_count} invalid date values while building time features."
         )
@@ -53,13 +76,13 @@ def _add_basic_calendar_features(df: pd.DataFrame) -> pd.DataFrame:
     """Add standard calendar-based features derived from the date column."""
     df = df.copy()
 
-    df["day_of_week"] = df["date"].dt.dayofweek.astype("Int64")
-    df["day_of_month"] = df["date"].dt.day.astype("Int64")
-    df["day_of_year"] = df["date"].dt.dayofyear.astype("Int64")
-    df["week_of_year"] = df["date"].dt.isocalendar().week.astype("Int64")
-    df["month"] = df["date"].dt.month.astype("Int64")
-    df["quarter"] = df["date"].dt.quarter.astype("Int64")
-    df["year"] = df["date"].dt.year.astype("Int64")
+    df["day_of_week"] = df[DATE_COLUMN].dt.dayofweek.astype("Int64")
+    df["day_of_month"] = df[DATE_COLUMN].dt.day.astype("Int64")
+    df["day_of_year"] = df[DATE_COLUMN].dt.dayofyear.astype("Int64")
+    df["week_of_year"] = df[DATE_COLUMN].dt.isocalendar().week.astype("Int64")
+    df["month"] = df[DATE_COLUMN].dt.month.astype("Int64")
+    df["quarter"] = df[DATE_COLUMN].dt.quarter.astype("Int64")
+    df["year"] = df[DATE_COLUMN].dt.year.astype("Int64")
 
     return df
 
@@ -68,7 +91,7 @@ def _add_basic_calendar_features(df: pd.DataFrame) -> pd.DataFrame:
 def _add_weekend_feature(df: pd.DataFrame) -> pd.DataFrame:
     """Add a binary weekend indicator based on day_of_week."""
     df = df.copy()
-    df["is_weekend"] = (df["date"].dt.dayofweek >= 5).astype("Int64")
+    df["is_weekend"] = (df[DATE_COLUMN].dt.dayofweek >= 5).astype("Int64")
     return df
 
 
@@ -76,8 +99,8 @@ def _add_weekend_feature(df: pd.DataFrame) -> pd.DataFrame:
 def _add_month_boundary_features(df: pd.DataFrame) -> pd.DataFrame:
     """Add indicators for month start and month end."""
     df = df.copy()
-    df["is_month_start"] = df["date"].dt.is_month_start.astype("Int64")
-    df["is_month_end"] = df["date"].dt.is_month_end.astype("Int64")
+    df["is_month_start"] = df[DATE_COLUMN].dt.is_month_start.astype("Int64")
+    df["is_month_end"] = df[DATE_COLUMN].dt.is_month_end.astype("Int64")
     return df
 
 
@@ -94,14 +117,7 @@ def _add_season_feature(df: pd.DataFrame) -> pd.DataFrame:
     """
     df = df.copy()
 
-    month_to_season = {
-        12: 1, 1: 1, 2: 1,
-        3: 2, 4: 2, 5: 2,
-        6: 3, 7: 3, 8: 3,
-        9: 4, 10: 4, 11: 4,
-    }
-
-    df["season"] = df["date"].dt.month.map(month_to_season).astype("Int64")
+    df["season"] = df[DATE_COLUMN].dt.month.map(MONTH_TO_SEASON).astype("Int64")
     return df
 
 
@@ -115,29 +131,29 @@ def _add_cyclical_time_features(df: pd.DataFrame) -> pd.DataFrame:
     """
     df = df.copy()
 
-    day_of_week = df["date"].dt.dayofweek
-    month = df["date"].dt.month
-    day_of_year = df["date"].dt.dayofyear
+    day_of_week = df[DATE_COLUMN].dt.dayofweek
+    month = df[DATE_COLUMN].dt.month
+    day_of_year = df[DATE_COLUMN].dt.dayofyear
 
     df["day_of_week_sin"] = pd.Series(
-        np.sin(2 * np.pi * day_of_week / 7), index=df.index
+        np.sin(2 * np.pi * day_of_week / DAYS_IN_WEEK), index=df.index
     )
     df["day_of_week_cos"] = pd.Series(
-        np.cos(2 * np.pi * day_of_week / 7), index=df.index
+        np.cos(2 * np.pi * day_of_week / DAYS_IN_WEEK), index=df.index
     )
 
     df["month_sin"] = pd.Series(
-        np.sin(2 * np.pi * month / 12), index=df.index
+        np.sin(2 * np.pi * month / MONTHS_IN_YEAR), index=df.index
     )
     df["month_cos"] = pd.Series(
-        np.cos(2 * np.pi * month / 12), index=df.index
+        np.cos(2 * np.pi * month / MONTHS_IN_YEAR), index=df.index
     )
 
     df["day_of_year_sin"] = pd.Series(
-        np.sin(2 * np.pi * day_of_year / 365.25), index=df.index
+        np.sin(2 * np.pi * day_of_year / DAYS_IN_YEAR), index=df.index
     )
     df["day_of_year_cos"] = pd.Series(
-        np.cos(2 * np.pi * day_of_year / 365.25), index=df.index
+        np.cos(2 * np.pi * day_of_year / DAYS_IN_YEAR), index=df.index
     )
 
     return df
@@ -154,7 +170,7 @@ def build_time_features(df: pd.DataFrame) -> pd.DataFrame:
     Parameters
     ----------
     df : pd.DataFrame
-        Input dataframe containing a `date` column.
+        Input dataframe containing the configured date column.
 
     Returns
     -------
@@ -172,6 +188,6 @@ def build_time_features(df: pd.DataFrame) -> pd.DataFrame:
 
 
 if __name__ == "__main__":
-    example_df = pd.DataFrame({"date": pd.date_range("2024-01-01", periods=5, freq="D")})
+    example_df = pd.DataFrame({DATE_COLUMN: pd.date_range("2024-01-01", periods=5, freq="D")})
     transformed_df = build_time_features(example_df)
     print(transformed_df.head())

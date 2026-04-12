@@ -1,5 +1,3 @@
-
-
 """
 predict.py
 
@@ -14,6 +12,8 @@ from typing import Any
 
 import pandas as pd
 
+from src.config.constants import DATE_COLUMN
+
 
 class PredictError(Exception):
     """Raised when model prediction fails."""
@@ -24,23 +24,25 @@ class PredictError(Exception):
 # =========================
 
 def _validate_input_dataframe(df: pd.DataFrame) -> pd.DataFrame:
-    """Validate that prediction input data is non-empty and contains a date column."""
+    """Validate that prediction input data is non-empty and contains the configured date column."""
     if df.empty:
         raise PredictError("Input dataframe is empty.")
 
-    if "date" not in df.columns:
-        raise PredictError("Input dataframe must contain a 'date' column.")
+    if DATE_COLUMN not in df.columns:
+        raise PredictError(
+            f"Input dataframe must contain a '{DATE_COLUMN}' column."
+        )
 
     result_df = df.copy()
-    result_df["date"] = pd.to_datetime(result_df["date"], errors="coerce")
+    result_df[DATE_COLUMN] = pd.to_datetime(result_df[DATE_COLUMN], errors="coerce")
 
-    if result_df["date"].isna().any():
-        invalid_count = int(result_df["date"].isna().sum())
+    if result_df[DATE_COLUMN].isna().any():
+        invalid_count = int(result_df[DATE_COLUMN].isna().sum())
         raise PredictError(
             f"Found {invalid_count} invalid date values in prediction input dataframe."
         )
 
-    return result_df.sort_values("date").reset_index(drop=True)
+    return result_df.sort_values(DATE_COLUMN).reset_index(drop=True)
 
 
 
@@ -74,7 +76,7 @@ def predict_with_model(
     model : Any
         Fitted model object exposing a `.predict(...)` method.
     df : pd.DataFrame
-        Input dataframe containing `date` and model features.
+        Input dataframe containing the configured date column and model features.
     feature_columns : list[str]
         Feature columns required by the model.
     prediction_column_name : str, optional
@@ -83,7 +85,7 @@ def predict_with_model(
     Returns
     -------
     pd.DataFrame
-        Dataframe containing `date` and the prediction column.
+        Dataframe containing the configured date column and the prediction column.
     """
     if model is None:
         raise PredictError("Model is None. A fitted model instance is required.")
@@ -104,7 +106,7 @@ def predict_with_model(
 
     predictions = model.predict(model_input)
 
-    prediction_df = validated_df.loc[model_input.index, ["date"]].copy()
+    prediction_df = validated_df.loc[model_input.index, [DATE_COLUMN]].copy()
     prediction_df[prediction_column_name] = predictions
 
     return prediction_df.reset_index(drop=True)
@@ -124,14 +126,14 @@ def predict_quantile_set(
     models : dict[float, Any]
         Dictionary mapping quantile values to fitted models.
     df : pd.DataFrame
-        Input dataframe containing `date` and model features.
+        Input dataframe containing the configured date column and model features.
     feature_columns : list[str]
         Feature columns required by the models.
 
     Returns
     -------
     pd.DataFrame
-        Dataframe containing `date` and one column per quantile, named `q_<quantile>`.
+        Dataframe containing the configured date column and one column per quantile, named `q_<quantile>`.
     """
     if not models:
         raise PredictError("models dictionary cannot be empty.")
@@ -147,7 +149,7 @@ def predict_quantile_set(
             "All rows were dropped due to missing feature values before quantile prediction."
         )
 
-    prediction_df = validated_df.loc[model_input.index, ["date"]].copy()
+    prediction_df = validated_df.loc[model_input.index, [DATE_COLUMN]].copy()
 
     for quantile, model in sorted(models.items(), key=lambda x: x[0]):
         if model is None:
@@ -155,7 +157,7 @@ def predict_quantile_set(
         if not hasattr(model, "predict"):
             raise PredictError(f"Model for quantile {quantile} does not expose a 'predict' method.")
 
-        prediction_df[f"q_{quantile}"] = model.predict(model_input)
+        prediction_df[f"q_{quantile:g}"] = model.predict(model_input)
 
     return prediction_df.reset_index(drop=True)
 
@@ -165,7 +167,7 @@ if __name__ == "__main__":
 
     example_df = pd.DataFrame(
         {
-            "date": pd.date_range("2024-01-01", periods=5, freq="D"),
+            DATE_COLUMN: pd.date_range("2024-01-01", periods=5, freq="D"),
             "x1": [1, 2, 3, 4, 5],
             "x2": [10, 11, 12, 13, 14],
             "y": [2, 4, 6, 8, 10],

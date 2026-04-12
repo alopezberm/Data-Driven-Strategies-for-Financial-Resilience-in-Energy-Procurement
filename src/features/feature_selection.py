@@ -1,5 +1,3 @@
-
-
 """
 feature_selection.py
 
@@ -16,6 +14,7 @@ import pandas as pd
 from sklearn.ensemble import RandomForestRegressor
 
 from src.config.constants import DATE_COLUMN, TARGET_COLUMN
+from src.config.settings import FeatureSelectionSettings, get_default_settings
 
 
 class FeatureSelectionError(Exception):
@@ -40,6 +39,11 @@ NON_FEATURE_COLUMNS = {
 }
 
 
+def get_default_feature_selection_settings() -> FeatureSelectionSettings:
+    """Return default feature-selection settings from the project configuration."""
+    return get_default_settings().feature_selection
+
+
 @dataclass
 class FeatureSelectionConfig:
     """Configuration for feature-selection routines."""
@@ -52,10 +56,35 @@ class FeatureSelectionConfig:
     random_state: int = 42
     n_estimators: int = 200
 
+    @classmethod
+    def from_settings(
+        cls,
+        settings: FeatureSelectionSettings,
+        target_column: str = TARGET_COLUMN,
+        exclude_columns: list[str] | None = None,
+    ) -> "FeatureSelectionConfig":
+        """Build a feature-selection config from centralized project settings."""
+        return cls(
+            target_column=target_column,
+            exclude_columns=exclude_columns,
+            max_missing_share=settings.max_missing_share,
+            min_non_null_rows=settings.min_non_null_rows,
+            top_k_importance=settings.top_k_importance,
+            random_state=settings.random_state,
+            n_estimators=settings.n_estimators,
+        )
+
     def resolved_exclude_columns(self) -> set[str]:
         """Return the full set of excluded columns."""
         extra = set() if self.exclude_columns is None else set(self.exclude_columns)
-        return set(NON_FEATURE_COLUMNS).union(extra).union({self.target_column})
+        return set(NON_FEATURE_COLUMNS).union(extra).union({self.target_column, DATE_COLUMN})
+
+
+def _get_config(config: FeatureSelectionConfig | None) -> FeatureSelectionConfig:
+    """Resolve an explicit config or build one from project settings."""
+    if config is not None:
+        return config
+    return FeatureSelectionConfig.from_settings(get_default_feature_selection_settings())
 
 
 # =========================
@@ -87,7 +116,7 @@ def get_candidate_feature_columns(
     Return the initial candidate feature columns after excluding obvious
     non-feature and target columns.
     """
-    config = FeatureSelectionConfig() if config is None else config
+    config = _get_config(config)
     df = _validate_input_df(df, config)
 
     excluded_columns = config.resolved_exclude_columns()
@@ -171,7 +200,7 @@ def rank_features_by_importance(
     Rows with missing values in either the target or selected features are dropped
     for the purpose of fitting the ranking model.
     """
-    config = FeatureSelectionConfig() if config is None else config
+    config = _get_config(config)
     df = _validate_input_df(df, config)
 
     if not feature_columns:
@@ -241,7 +270,7 @@ def select_model_features(
     dict[str, object]
         Dictionary with selected feature names and optional importance table.
     """
-    config = FeatureSelectionConfig() if config is None else config
+    config = _get_config(config)
     df = _validate_input_df(df, config)
 
     candidate_columns = get_candidate_feature_columns(df, config=config)
@@ -269,8 +298,8 @@ def select_model_features(
 if __name__ == "__main__":
     example_df = pd.DataFrame(
         {
-            "date": pd.date_range("2024-01-01", periods=10, freq="D"),
-            "Spot_Price_SPEL": [50, 55, 53, 60, 62, 58, 57, 61, 65, 63],
+            DATE_COLUMN: pd.date_range("2024-01-01", periods=10, freq="D"),
+            TARGET_COLUMN: [50, 55, 53, 60, 62, 58, 57, 61, 65, 63],
             "Future_M1_Price": [51, 54, 54, 59, 61, 57, 58, 60, 64, 62],
             "temperature_2m_mean": [10, 11, 12, 10, 9, 8, 7, 8, 9, 10],
             "is_weekend": [0, 0, 0, 0, 0, 1, 1, 0, 0, 0],

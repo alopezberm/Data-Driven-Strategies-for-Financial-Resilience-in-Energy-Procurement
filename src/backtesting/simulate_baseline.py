@@ -13,10 +13,13 @@ from dataclasses import dataclass
 import pandas as pd
 
 from src.config.constants import (
+    DATE_COLUMN,
     DEFAULT_DAILY_VOLUME,
-    DEFAULT_FUTURE_COLUMN,
-    DEFAULT_SPOT_COLUMN,
     DEFAULT_STATIC_HEDGE_RATIO,
+    PRIMARY_FUTURE_COLUMN,
+    SPOT_PRICE_COLUMN,
+    STRATEGY_SPOT_ONLY,
+    STRATEGY_STATIC_HEDGE,
 )
 from src.config.settings import SimulationSettings, TrainingSettings, get_default_settings
 
@@ -27,13 +30,16 @@ class BaselineSimulationError(Exception):
 
 DEFAULT_VOLUME_COLUMN = "daily_energy_mwh"
 
+ACTION_BUY_ON_SPOT = "buy_on_spot"
+ACTION_STATIC_M1_HEDGE = "static_m1_hedge"
+
 
 @dataclass
 class BaselineSimulationConfig:
     """Configuration for baseline procurement simulations."""
 
-    spot_column: str = DEFAULT_SPOT_COLUMN
-    future_column: str = DEFAULT_FUTURE_COLUMN
+    spot_column: str = SPOT_PRICE_COLUMN
+    future_column: str = PRIMARY_FUTURE_COLUMN
     volume_column: str = DEFAULT_VOLUME_COLUMN
     default_daily_volume: float = DEFAULT_DAILY_VOLUME
     hedge_ratio: float = DEFAULT_STATIC_HEDGE_RATIO
@@ -47,7 +53,7 @@ class BaselineSimulationConfig:
         """Build baseline simulation config from centralized project settings."""
         return cls(
             spot_column=training_settings.target_column,
-            future_column=DEFAULT_FUTURE_COLUMN,
+            future_column=PRIMARY_FUTURE_COLUMN,
             volume_column=DEFAULT_VOLUME_COLUMN,
             default_daily_volume=simulation_settings.default_daily_volume,
             hedge_ratio=training_settings.static_hedge_ratio,
@@ -72,8 +78,10 @@ def _validate_input_dataframe(df: pd.DataFrame, config: BaselineSimulationConfig
     if df.empty:
         raise BaselineSimulationError("Input dataframe is empty.")
 
-    if "date" not in df.columns:
-        raise BaselineSimulationError("Input dataframe must contain a 'date' column.")
+    if DATE_COLUMN not in df.columns:
+        raise BaselineSimulationError(
+            f"Input dataframe must contain a '{DATE_COLUMN}' column."
+        )
 
     required_columns = [config.spot_column]
     missing_columns = [column for column in required_columns if column not in df.columns]
@@ -83,21 +91,21 @@ def _validate_input_dataframe(df: pd.DataFrame, config: BaselineSimulationConfig
         )
 
     validated_df = df.copy()
-    validated_df["date"] = pd.to_datetime(validated_df["date"], errors="coerce")
+    validated_df[DATE_COLUMN] = pd.to_datetime(validated_df[DATE_COLUMN], errors="coerce")
 
-    if validated_df["date"].isna().any():
-        invalid_count = int(validated_df["date"].isna().sum())
+    if validated_df[DATE_COLUMN].isna().any():
+        invalid_count = int(validated_df[DATE_COLUMN].isna().sum())
         raise BaselineSimulationError(
             f"Found {invalid_count} invalid date values in baseline simulation input."
         )
 
-    if validated_df["date"].duplicated().any():
+    if validated_df[DATE_COLUMN].duplicated().any():
         raise BaselineSimulationError("Input dataframe contains duplicated dates.")
 
     if config.hedge_ratio < 0 or config.hedge_ratio > 1:
         raise BaselineSimulationError("hedge_ratio must be between 0 and 1.")
 
-    return validated_df.sort_values("date").reset_index(drop=True)
+    return validated_df.sort_values(DATE_COLUMN).reset_index(drop=True)
 
 
 
@@ -166,7 +174,7 @@ def simulate_spot_only_baseline(
 
     simulation_df = _validate_input_dataframe(df, config)
     simulation_df = _ensure_volume_column(simulation_df, config)
-    simulation_df = _build_common_output(simulation_df, config, "spot_only")
+    simulation_df = _build_common_output(simulation_df, config, STRATEGY_SPOT_ONLY)
 
     simulation_df["hedged_volume_mwh"] = 0.0
     simulation_df["spot_volume_mwh"] = simulation_df["energy_volume_mwh"]
@@ -176,7 +184,7 @@ def simulate_spot_only_baseline(
         simulation_df["spot_volume_mwh"] * simulation_df["spot_price"]
     )
     simulation_df["total_cost"] = simulation_df["spot_cost"]
-    simulation_df["action_taken"] = "buy_on_spot"
+    simulation_df["action_taken"] = ACTION_BUY_ON_SPOT
 
     return simulation_df
 
@@ -212,7 +220,7 @@ def simulate_static_hedge_baseline(
             f"Missing futures column '{config.future_column}' for static hedge simulation."
         )
 
-    simulation_df = _build_common_output(simulation_df, config, "static_hedge")
+    simulation_df = _build_common_output(simulation_df, config, STRATEGY_STATIC_HEDGE)
     simulation_df["future_price"] = pd.to_numeric(
         simulation_df[config.future_column], errors="coerce"
     )
@@ -238,7 +246,7 @@ def simulate_static_hedge_baseline(
     simulation_df["total_cost"] = (
         simulation_df["future_cost"] + simulation_df["spot_cost"]
     )
-    simulation_df["action_taken"] = "static_m1_hedge"
+    simulation_df["action_taken"] = ACTION_STATIC_M1_HEDGE
 
     return simulation_df
 
@@ -279,10 +287,10 @@ def summarize_simulation(simulation_df: pd.DataFrame) -> pd.DataFrame:
 if __name__ == "__main__":
     example_df = pd.DataFrame(
         {
-            "date": pd.date_range("2025-01-01", periods=5, freq="D"),
-            "Spot_Price_SPEL": [80, 120, 95, 70, 110],
-            "Future_M1_Price": [85, 90, 92, 88, 91],
-            "daily_energy_mwh": [10, 10, 10, 10, 10],
+            DATE_COLUMN: pd.date_range("2025-01-01", periods=5, freq="D"),
+            SPOT_PRICE_COLUMN: [80, 120, 95, 70, 110],
+            PRIMARY_FUTURE_COLUMN: [85, 90, 92, 88, 91],
+            DEFAULT_VOLUME_COLUMN: [10, 10, 10, 10, 10],
         }
     )
 
@@ -295,7 +303,7 @@ if __name__ == "__main__":
         config=config,
     )
 
-    print(spot_only_df[["date", "strategy_name", "spot_cost", "total_cost"]])
-    print(static_hedge_df[["date", "strategy_name", "future_cost", "spot_cost", "total_cost"]])
+    print(spot_only_df[[DATE_COLUMN, "strategy_name", "spot_cost", "total_cost"]])
+    print(static_hedge_df[[DATE_COLUMN, "strategy_name", "future_cost", "spot_cost", "total_cost"]])
     print(summarize_simulation(spot_only_df))
     print(summarize_simulation(static_hedge_df))

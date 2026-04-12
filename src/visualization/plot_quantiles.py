@@ -16,12 +16,29 @@ from typing import Sequence
 import matplotlib.pyplot as plt
 import pandas as pd
 
+from src.config.constants import Q50_COLUMN, Q90_COLUMN, Q95_COLUMN
 from src.config.paths import FIGURES_DIR
 from src.models.quantile_models import QuantileModelResults
 
 
 class QuantilePlotError(Exception):
     """Raised when quantile forecast plots cannot be generated safely."""
+
+
+# Helper utilities for quantile column naming and parsing
+def _format_quantile_column(quantile: float) -> str:
+    """Format a quantile value into the project's quantile-column naming convention."""
+    return f"q_{quantile:g}"
+
+
+def _parse_quantile_column(column_name: str) -> float:
+    """Parse a numeric quantile value from a column name like 'q_0.9'."""
+    try:
+        return float(column_name.replace("q_", ""))
+    except ValueError as exc:
+        raise QuantilePlotError(
+            f"Could not parse quantile value from column name '{column_name}'."
+        ) from exc
 
 
 # =========================
@@ -73,7 +90,7 @@ def _results_to_frame(results: Sequence[QuantileModelResults]) -> pd.DataFrame:
     df["y_true"] = validated_results[0].y_true
 
     for result in validated_results:
-        df[f"q_{result.quantile}"] = result.y_pred
+        df[_format_quantile_column(result.quantile)] = result.y_pred
 
     return df
 
@@ -98,7 +115,7 @@ def plot_quantile_forecasts(
 
     quantile_columns = sorted(
         [column for column in df.columns if column.startswith("q_")],
-        key=lambda x: float(x.replace("q_", "")),
+        key=_parse_quantile_column,
     )
     for column in quantile_columns:
         plt.plot(df.index, df[column], label=column)
@@ -139,8 +156,8 @@ def plot_quantile_band(
         raise QuantilePlotError("lower_quantile must be strictly smaller than upper_quantile.")
 
     df = _results_to_frame(results)
-    lower_column = f"q_{lower_quantile}"
-    upper_column = f"q_{upper_quantile}"
+    lower_column = _format_quantile_column(lower_quantile)
+    upper_column = _format_quantile_column(upper_quantile)
 
     missing_columns = [col for col in [lower_column, upper_column] if col not in df.columns]
     if missing_columns:
@@ -182,7 +199,7 @@ def plot_upper_tail_exceedances(
     Plot actual values and highlight where the realized target exceeded an upper quantile.
     """
     df = _results_to_frame(results)
-    upper_column = f"q_{upper_quantile}"
+    upper_column = _format_quantile_column(upper_quantile)
 
     if upper_column not in df.columns:
         raise QuantilePlotError(
@@ -227,7 +244,7 @@ def plot_quantile_error_series(
     y_true - q_alpha
     """
     df = _results_to_frame(results)
-    quantile_column = f"q_{quantile}"
+    quantile_column = _format_quantile_column(quantile)
 
     if quantile_column not in df.columns:
         raise QuantilePlotError(
@@ -257,16 +274,16 @@ def plot_quantile_error_series(
 
 if __name__ == "__main__":
     y_true = pd.Series([70, 75, 80, 78, 82, 76])
-    q50 = pd.Series([72, 74, 79, 79, 81, 77])
-    q90 = pd.Series([84, 87, 92, 86, 95, 84])
-    q95 = pd.Series([88, 90, 96, 89, 99, 87])
+    q50_series = pd.Series([72, 74, 79, 79, 81, 77], name=Q50_COLUMN)
+    q90_series = pd.Series([84, 87, 92, 86, 95, 84], name=Q90_COLUMN)
+    q95_series = pd.Series([88, 90, 96, 89, 99, 87], name=Q95_COLUMN)
 
     results = [
         QuantileModelResults(
             quantile=0.5,
             model_name="gbr_quantile_0.5",
             y_true=y_true,
-            y_pred=q50,
+            y_pred=q50_series,
             pinball_loss=0.0,
             mae=0.0,
             rmse=0.0,
@@ -275,7 +292,7 @@ if __name__ == "__main__":
             quantile=0.9,
             model_name="gbr_quantile_0.9",
             y_true=y_true,
-            y_pred=q90,
+            y_pred=q90_series,
             pinball_loss=0.0,
             mae=0.0,
             rmse=0.0,
@@ -284,7 +301,7 @@ if __name__ == "__main__":
             quantile=0.95,
             model_name="gbr_quantile_0.95",
             y_true=y_true,
-            y_pred=q95,
+            y_pred=q95_series,
             pinball_loss=0.0,
             mae=0.0,
             rmse=0.0,

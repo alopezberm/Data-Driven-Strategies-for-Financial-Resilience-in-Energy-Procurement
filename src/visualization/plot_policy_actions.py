@@ -1,5 +1,3 @@
-
-
 """
 plot_policy_actions.py
 
@@ -15,6 +13,7 @@ from pathlib import Path
 import matplotlib.pyplot as plt
 import pandas as pd
 
+from src.config.constants import ACTIONS, DATE_COLUMN
 from src.config.paths import FIGURES_DIR
 
 
@@ -23,9 +22,27 @@ class PolicyActionPlotError(Exception):
 
 
 REQUIRED_POLICY_COLUMNS = {
-    "date",
+    DATE_COLUMN,
     "recommended_action",
 }
+
+
+ACTION_DO_NOTHING = ACTIONS[0]
+ACTION_BUY_M1_FUTURE = ACTIONS[1]
+ACTION_SHIFT_PRODUCTION = ACTIONS[2]
+
+
+def _validate_action_catalog() -> None:
+    """Validate the centralized action catalog used by this module."""
+    expected_actions = {
+        ACTION_DO_NOTHING,
+        ACTION_BUY_M1_FUTURE,
+        ACTION_SHIFT_PRODUCTION,
+    }
+    if len(ACTIONS) < 3 or set(ACTIONS[:3]) != expected_actions:
+        raise PolicyActionPlotError(
+            "Centralized ACTIONS constant must contain the expected action labels in the first three positions."
+        )
 
 
 # =========================
@@ -44,18 +61,25 @@ def _validate_policy_df(policy_df: pd.DataFrame) -> pd.DataFrame:
         )
 
     result_df = policy_df.copy()
-    result_df["date"] = pd.to_datetime(result_df["date"], errors="coerce")
+    result_df[DATE_COLUMN] = pd.to_datetime(result_df[DATE_COLUMN], errors="coerce")
 
-    if result_df["date"].isna().any():
-        invalid_count = int(result_df["date"].isna().sum())
+    if result_df[DATE_COLUMN].isna().any():
+        invalid_count = int(result_df[DATE_COLUMN].isna().sum())
         raise PolicyActionPlotError(
             f"Found {invalid_count} invalid date values in policy dataframe."
         )
 
-    if result_df["date"].duplicated().any():
+    if result_df[DATE_COLUMN].duplicated().any():
         raise PolicyActionPlotError("Policy dataframe contains duplicated dates.")
 
-    return result_df.sort_values("date").reset_index(drop=True)
+    _validate_action_catalog()
+    invalid_actions = set(result_df["recommended_action"].dropna().unique()) - set(ACTIONS)
+    if invalid_actions:
+        raise PolicyActionPlotError(
+            f"Unknown actions found in policy dataframe: {sorted(invalid_actions)}"
+        )
+
+    return result_df.sort_values(DATE_COLUMN).reset_index(drop=True)
 
 
 
@@ -136,20 +160,15 @@ def plot_action_timeline(
     df = _validate_policy_df(policy_df)
 
     action_to_y = {
-        "do_nothing": 0,
-        "buy_m1_future": 1,
-        "shift_production": 2,
+        ACTION_DO_NOTHING: 0,
+        ACTION_BUY_M1_FUTURE: 1,
+        ACTION_SHIFT_PRODUCTION: 2,
     }
 
     action_values = df["recommended_action"].map(action_to_y)
-    if action_values.isna().any():
-        unknown_actions = df.loc[action_values.isna(), "recommended_action"].unique().tolist()
-        raise PolicyActionPlotError(
-            f"Unknown actions found in policy dataframe: {unknown_actions}"
-        )
 
     plt.figure(figsize=(12, 4))
-    plt.scatter(df["date"], action_values)
+    plt.scatter(df[DATE_COLUMN], action_values)
     plt.yticks(list(action_to_y.values()), list(action_to_y.keys()))
     plt.title(title)
     plt.xlabel("Date")
@@ -194,20 +213,20 @@ def plot_actions_vs_tail_risk(
         )
 
     action_to_y = {
-        "do_nothing": 0,
-        "buy_m1_future": 1,
-        "shift_production": 2,
+        ACTION_DO_NOTHING: 0,
+        ACTION_BUY_M1_FUTURE: 1,
+        ACTION_SHIFT_PRODUCTION: 2,
     }
     action_values = df["recommended_action"].map(action_to_y)
 
     fig, ax1 = plt.subplots(figsize=(12, 5))
-    ax1.plot(df["date"], tail_risk, label=tail_risk_column)
+    ax1.plot(df[DATE_COLUMN], tail_risk, label=tail_risk_column)
     ax1.set_xlabel("Date")
     ax1.set_ylabel("Tail-risk signal")
     ax1.set_title(title)
 
     ax2 = ax1.twinx()
-    ax2.scatter(df["date"], action_values, label="recommended_action")
+    ax2.scatter(df[DATE_COLUMN], action_values, label="recommended_action")
     ax2.set_ylabel("Action level")
     ax2.set_yticks(list(action_to_y.values()))
     ax2.set_yticklabels(list(action_to_y.keys()))
@@ -227,16 +246,16 @@ def plot_actions_vs_tail_risk(
 if __name__ == "__main__":
     example_df = pd.DataFrame(
         {
-            "date": pd.date_range("2025-01-01", periods=8, freq="D"),
+            DATE_COLUMN: pd.date_range("2025-01-01", periods=8, freq="D"),
             "recommended_action": [
-                "do_nothing",
-                "buy_m1_future",
-                "buy_m1_future",
-                "shift_production",
-                "do_nothing",
-                "buy_m1_future",
-                "shift_production",
-                "do_nothing",
+                ACTION_DO_NOTHING,
+                ACTION_BUY_M1_FUTURE,
+                ACTION_BUY_M1_FUTURE,
+                ACTION_SHIFT_PRODUCTION,
+                ACTION_DO_NOTHING,
+                ACTION_BUY_M1_FUTURE,
+                ACTION_SHIFT_PRODUCTION,
+                ACTION_DO_NOTHING,
             ],
             "tail_vs_future_abs": [2.0, 10.5, 12.2, 15.8, 3.1, 9.7, 18.0, 1.5],
         }

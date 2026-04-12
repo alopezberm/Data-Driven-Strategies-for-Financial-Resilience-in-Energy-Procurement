@@ -1,5 +1,3 @@
-
-
 """
 evaluate_model.py
 
@@ -12,15 +10,34 @@ from __future__ import annotations
 
 from typing import Any, Sequence
 
-import numpy as np
 import pandas as pd
 
+from src.config.constants import Q50_COLUMN
 from src.models.baseline_models import BaselineResults
 from src.models.quantile_models import QuantileModelResults
 
 
 class ModelEvaluationError(Exception):
     """Raised when model evaluation inputs are inconsistent or invalid."""
+
+
+def _parse_quantile_from_column_name(column_name: str) -> float:
+    """Parse a quantile value from a quantile column name like 'q_0.9'."""
+    try:
+        return float(column_name.replace("q_", ""))
+    except ValueError as exc:
+        raise ModelEvaluationError(
+            f"Could not parse nominal quantile from column name '{column_name}'."
+        ) from exc
+
+
+
+def _get_sorted_quantile_columns(df: pd.DataFrame) -> list[str]:
+    """Return quantile columns sorted by their numeric quantile value."""
+    return sorted(
+        [col for col in df.columns if col.startswith("q_")],
+        key=_parse_quantile_from_column_name,
+    )
 
 
 # =========================
@@ -115,13 +132,11 @@ def combine_quantile_predictions(results: Sequence[QuantileModelResults]) -> pd.
             raise ModelEvaluationError(
                 "All quantile results must share the same evaluation index."
             )
-        combined_df[f"q_{result.quantile}"] = result.y_pred
+        quantile_column = f"q_{result.quantile:g}"
+        combined_df[quantile_column] = result.y_pred
     
-    # Enforce monotonicity across quantiles to avoid quantile crossing issues.
-    quantile_columns = sorted(
-        [col for col in combined_df.columns if col.startswith("q_")],
-        key=lambda x: float(x.replace("q_", ""))
-    )
+    # Enforce monotonicity across adjacent quantiles to avoid quantile crossing issues.
+    quantile_columns = _get_sorted_quantile_columns(combined_df)
 
     for i in range(1, len(quantile_columns)):
         prev_col = quantile_columns[i - 1]
@@ -154,12 +169,7 @@ def evaluate_quantile_coverage(
     if eval_df.empty:
         raise ModelEvaluationError("Coverage evaluation dataframe is empty after dropping NaNs.")
 
-    try:
-        nominal_quantile = float(quantile_column.replace("q_", ""))
-    except ValueError as exc:
-        raise ModelEvaluationError(
-            f"Could not parse nominal quantile from column name '{quantile_column}'."
-        ) from exc
+    nominal_quantile = _parse_quantile_from_column_name(quantile_column)
 
     empirical_coverage = float((eval_df["y_true"] <= eval_df[quantile_column]).mean())
 
@@ -195,6 +205,13 @@ def evaluate_prediction_interval(
 
     if eval_df.empty:
         raise ModelEvaluationError("Interval evaluation dataframe is empty after dropping NaNs.")
+
+    lower_quantile = _parse_quantile_from_column_name(lower_quantile_column)
+    upper_quantile = _parse_quantile_from_column_name(upper_quantile_column)
+    if lower_quantile >= upper_quantile:
+        raise ModelEvaluationError(
+            "lower_quantile_column must correspond to a strictly smaller quantile than upper_quantile_column."
+        )
 
     if (eval_df[lower_quantile_column] > eval_df[upper_quantile_column]).any():
         raise ModelEvaluationError(
@@ -242,12 +259,7 @@ def evaluate_upper_tail_exceedance_rate(
 
     exceedance_rate = float((eval_df["y_true"] > eval_df[upper_quantile_column]).mean())
 
-    try:
-        nominal_quantile = float(upper_quantile_column.replace("q_", ""))
-    except ValueError as exc:
-        raise ModelEvaluationError(
-            f"Could not parse nominal quantile from column name '{upper_quantile_column}'."
-        ) from exc
+    nominal_quantile = _parse_quantile_from_column_name(upper_quantile_column)
 
     target_exceedance = 1.0 - nominal_quantile
 
@@ -278,10 +290,7 @@ def build_quantile_diagnostics_report(
     """
     combined_df = combine_quantile_predictions(quantile_results)
 
-    quantile_columns = sorted(
-        [column for column in combined_df.columns if column.startswith("q_")],
-        key=lambda x: float(x.replace("q_", "")),
-    )
+    quantile_columns = _get_sorted_quantile_columns(combined_df)
 
     coverage_rows: list[dict[str, float]] = []
     interval_rows: list[dict[str, float]] = []
@@ -290,16 +299,17 @@ def build_quantile_diagnostics_report(
     for quantile_column in quantile_columns:
         coverage_rows.append(evaluate_quantile_coverage(combined_df, quantile_column))
 
-        quantile_value = float(quantile_column.replace("q_", ""))
+        quantile_value = _parse_quantile_from_column_name(quantile_column)
         if quantile_value >= 0.5:
             exceedance_rows.append(
                 evaluate_upper_tail_exceedance_rate(combined_df, quantile_column)
             )
 
-    for lower_col, upper_col in zip(quantile_columns[:-1], quantile_columns[1:]):
-        interval_rows.append(
-            evaluate_prediction_interval(combined_df, lower_col, upper_col)
-        )
+    if len(quantile_columns) >= 2:
+        for lower_col, upper_col in zip(quantile_columns[:-1], quantile_columns[1:]):
+            interval_rows.append(
+                evaluate_prediction_interval(combined_df, lower_col, upper_col)
+            )
 
     diagnostics = {
         "combined_predictions": combined_df,
@@ -346,6 +356,7 @@ if __name__ == "__main__":
         quantile_results=[q50, q90],
     )
     diagnostics = build_quantile_diagnostics_report([q50, q90])
+    assert Q50_COLUMN in diagnostics["combined_predictions"].columns
 
     print(comparison_df)
     print(diagnostics["coverage_summary"])

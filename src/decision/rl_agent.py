@@ -1,5 +1,3 @@
-
-
 """
 rl_agent.py
 
@@ -11,10 +9,12 @@ interact with the custom environment defined in `rl_environment.py`.
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import Any
 import random
 
+from src.config.constants import ACTIONS
+from src.config.settings import RLSettings, get_default_settings
 from src.decision.rl_environment import EnergyRLEnvironment
 
 
@@ -22,15 +22,77 @@ class RLAgentError(Exception):
     """Raised when an RL agent cannot act or train safely."""
 
 
+ACTION_DO_NOTHING = 0
+ACTION_BUY_M1_FUTURE = 1
+ACTION_SHIFT_PRODUCTION = 2
+
+
 @dataclass
 class RLAgentConfig:
     """Configuration shared by lightweight RL agents."""
 
-    action_space: tuple[int, ...] = (0, 1, 2)
+    action_space: tuple[int, ...] = (ACTION_DO_NOTHING, ACTION_BUY_M1_FUTURE, ACTION_SHIFT_PRODUCTION)
     random_seed: int = 42
     epsilon: float = 0.1
     learning_rate: float = 0.1
     discount_factor: float = 0.95
+
+    @classmethod
+    def from_settings(cls, settings: RLSettings) -> "RLAgentConfig":
+        """Build an RL agent config from centralized project settings."""
+        return cls(
+            action_space=(ACTION_DO_NOTHING, ACTION_BUY_M1_FUTURE, ACTION_SHIFT_PRODUCTION),
+            random_seed=42,
+            epsilon=settings.epsilon,
+            learning_rate=settings.learning_rate,
+            discount_factor=settings.discount_factor,
+        )
+
+
+@dataclass
+class QLearningAgentConfig(RLAgentConfig):
+    """Configuration for the lightweight tabular Q-learning skeleton."""
+
+    epsilon_decay: float = 0.995
+    epsilon_min: float = 0.01
+    state_rounding_digits: int = 1
+
+    @classmethod
+    def from_settings(cls, settings: RLSettings) -> "QLearningAgentConfig":
+        """Build a Q-learning config from centralized project settings."""
+        return cls(
+            action_space=(ACTION_DO_NOTHING, ACTION_BUY_M1_FUTURE, ACTION_SHIFT_PRODUCTION),
+            random_seed=42,
+            epsilon=settings.epsilon,
+            learning_rate=settings.learning_rate,
+            discount_factor=settings.discount_factor,
+            epsilon_decay=settings.epsilon_decay,
+            epsilon_min=settings.epsilon_min,
+            state_rounding_digits=settings.state_rounding_digits,
+        )
+
+
+def get_default_rl_settings() -> RLSettings:
+    """Return default RL settings from the project configuration."""
+    return get_default_settings().rl
+
+
+
+def _get_agent_config(config: RLAgentConfig | None) -> RLAgentConfig:
+    """Resolve an explicit RL agent config or build one from project settings."""
+    if config is not None:
+        return config
+    return RLAgentConfig.from_settings(get_default_rl_settings())
+
+
+
+def _validate_action_catalog() -> None:
+    """Validate that the centralized ACTIONS catalog matches the RL action encoding."""
+    expected_action_labels = {"do_nothing", "buy_m1_future", "shift_production"}
+    if len(ACTIONS) < 3 or set(ACTIONS[:3]) != expected_action_labels:
+        raise RLAgentError(
+            "Centralized ACTIONS constant must contain the expected RL action labels in the first three positions."
+        )
 
 
 class BaseRLAgent:
@@ -42,7 +104,8 @@ class BaseRLAgent:
     """
 
     def __init__(self, config: RLAgentConfig | None = None):
-        self.config = RLAgentConfig() if config is None else config
+        _validate_action_catalog()
+        self.config = _get_agent_config(config)
         self._rng = random.Random(self.config.random_seed)
 
     def select_action(self, state: dict[str, Any]) -> int:
@@ -130,12 +193,17 @@ class HeuristicRLAgent(BaseRLAgent):
     def __init__(
         self,
         config: RLAgentConfig | None = None,
-        hedge_threshold: float = 5.0,
-        shift_threshold: float = 2.0,
+        hedge_threshold: float | None = None,
+        shift_threshold: float | None = None,
     ):
         super().__init__(config=config)
-        self.hedge_threshold = hedge_threshold
-        self.shift_threshold = shift_threshold
+        rl_settings = get_default_rl_settings()
+        self.hedge_threshold = (
+            rl_settings.heuristic_hedge_threshold if hedge_threshold is None else hedge_threshold
+        )
+        self.shift_threshold = (
+            rl_settings.heuristic_shift_threshold if shift_threshold is None else shift_threshold
+        )
 
     def select_action(self, state: dict[str, Any]) -> int:
         required_keys = {"q50", "q90", "future_price"}
@@ -153,19 +221,10 @@ class HeuristicRLAgent(BaseRLAgent):
         tail_vs_central = q90 - q50
 
         if tail_vs_future >= self.hedge_threshold:
-            return 1  # hedge
+            return ACTION_BUY_M1_FUTURE
         if tail_vs_central >= self.shift_threshold:
-            return 2  # shift
-        return 0  # do nothing
-
-
-@dataclass
-class QLearningAgentConfig(RLAgentConfig):
-    """Configuration for the lightweight tabular Q-learning skeleton."""
-
-    epsilon_decay: float = 0.995
-    epsilon_min: float = 0.01
-    state_rounding_digits: int = 1
+            return ACTION_SHIFT_PRODUCTION
+        return ACTION_DO_NOTHING
 
 
 class QLearningAgent(BaseRLAgent):
@@ -178,7 +237,7 @@ class QLearningAgent(BaseRLAgent):
     """
 
     def __init__(self, config: QLearningAgentConfig | None = None):
-        self.q_config = QLearningAgentConfig() if config is None else config
+        self.q_config = QLearningAgentConfig.from_settings(get_default_rl_settings()) if config is None else config
         super().__init__(config=self.q_config)
         self.q_table: dict[tuple[tuple[str, float], ...], dict[int, float]] = {}
 
@@ -250,15 +309,18 @@ def evaluate_agent(
 if __name__ == "__main__":
     import pandas as pd
 
+    from src.config.constants import PRIMARY_FUTURE_COLUMN, Q50_COLUMN, Q90_COLUMN
+
     example_df = pd.DataFrame(
         {
-            "q_0.5": [50, 55, 60, 58],
-            "q_0.9": [60, 68, 78, 66],
-            "Future_M1_Price": [52, 57, 63, 60],
+            Q50_COLUMN: [50, 55, 60, 58],
+            Q90_COLUMN: [60, 68, 78, 66],
+            PRIMARY_FUTURE_COLUMN: [52, 57, 63, 60],
         }
     )
 
     env = EnergyRLEnvironment(example_df)
+    assert len(ACTIONS) >= 3
 
     print("=== RANDOM AGENT ===")
     random_agent = RandomAgent()

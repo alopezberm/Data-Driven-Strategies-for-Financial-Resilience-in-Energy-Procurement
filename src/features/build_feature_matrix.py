@@ -1,5 +1,3 @@
-
-
 """
 build_feature_matrix.py
 
@@ -14,6 +12,7 @@ from pathlib import Path
 
 import pandas as pd
 
+from src.config.constants import DATE_COLUMN, PRIMARY_FUTURE_COLUMN, PRIMARY_OPEN_INTEREST_COLUMN, SPOT_PRICE_COLUMN
 from src.config.paths import MODELING_DATASET_FILE
 from src.features.build_future_features import build_future_features
 from src.features.build_lag_features import build_lag_features
@@ -36,29 +35,31 @@ def _validate_input_dataframe(df: pd.DataFrame) -> pd.DataFrame:
     Returns
     -------
     pd.DataFrame
-        Sorted copy of the dataframe with a standardized `date` column.
+        Sorted copy of the dataframe with a standardized date column.
     """
     if df.empty:
         raise FeatureMatrixError("Input dataframe is empty.")
 
-    if "date" not in df.columns:
-        raise FeatureMatrixError("Input dataframe must contain a 'date' column.")
+    if DATE_COLUMN not in df.columns:
+        raise FeatureMatrixError(
+            f"Input dataframe must contain a '{DATE_COLUMN}' column."
+        )
 
     df = df.copy()
-    df["date"] = pd.to_datetime(df["date"], errors="coerce")
+    df[DATE_COLUMN] = pd.to_datetime(df[DATE_COLUMN], errors="coerce")
 
-    if df["date"].isna().any():
-        invalid_count = int(df["date"].isna().sum())
+    if df[DATE_COLUMN].isna().any():
+        invalid_count = int(df[DATE_COLUMN].isna().sum())
         raise FeatureMatrixError(
             f"Found {invalid_count} invalid date values while building the feature matrix."
         )
 
-    if df["date"].duplicated().any():
+    if df[DATE_COLUMN].duplicated().any():
         raise FeatureMatrixError(
             "Input dataframe contains duplicated dates. The feature matrix requires unique chronological rows."
         )
 
-    df = df.sort_values("date").reset_index(drop=True)
+    df = df.sort_values(DATE_COLUMN).reset_index(drop=True)
     return df
 
 
@@ -68,10 +69,12 @@ def _validate_output_dataframe(df: pd.DataFrame) -> None:
     if df.empty:
         raise FeatureMatrixError("The resulting feature matrix is empty.")
 
-    if "date" not in df.columns:
-        raise FeatureMatrixError("The resulting feature matrix does not contain a 'date' column.")
+    if DATE_COLUMN not in df.columns:
+        raise FeatureMatrixError(
+            f"The resulting feature matrix does not contain a '{DATE_COLUMN}' column."
+        )
 
-    if df["date"].duplicated().any():
+    if df[DATE_COLUMN].duplicated().any():
         raise FeatureMatrixError("The resulting feature matrix contains duplicated dates.")
 
 
@@ -112,8 +115,7 @@ def build_feature_matrix(
     use_future_features : bool, optional
         Whether to add futures-market and term-structure features.
     save : bool, optional
-        Whether to save the final feature matrix to
-        `data/processed/modeling_dataset.csv`.
+        Whether to save the final feature matrix to the configured processed-data path.
 
     Returns
     -------
@@ -145,10 +147,10 @@ def build_feature_matrix(
 if __name__ == "__main__":
     example_df = pd.DataFrame(
         {
-            "date": pd.date_range("2024-01-01", periods=40, freq="D"),
-            "Spot_Price_SPEL": range(40),
-            "Future_M1_Price": range(100, 140),
-            "Future_M1_OpenInterest": range(1000, 1040),
+            DATE_COLUMN: pd.date_range("2024-01-01", periods=40, freq="D"),
+            SPOT_PRICE_COLUMN: range(40),
+            PRIMARY_FUTURE_COLUMN: range(100, 140),
+            PRIMARY_OPEN_INTEREST_COLUMN: range(1000, 1040),
             "Future_M2_Price": range(200, 240),
             "Future_M2_OpenInterest": range(2000, 2040),
         }

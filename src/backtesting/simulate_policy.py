@@ -13,25 +13,28 @@ from dataclasses import dataclass
 import pandas as pd
 
 from src.config.constants import (
+    ACTIONS,
+    DATE_COLUMN,
     DEFAULT_DAILY_VOLUME,
-    DEFAULT_FUTURE_COLUMN,
     DEFAULT_HEDGE_RATIO_ON_BUY_FUTURE,
     DEFAULT_SHIFT_FRACTION,
     DEFAULT_SHIFT_PENALTY_PER_MWH,
-    DEFAULT_SPOT_COLUMN,
+    PRIMARY_FUTURE_COLUMN,
+    SPOT_PRICE_COLUMN,
+    STRATEGY_HEURISTIC_POLICY,
 )
-from src.config.settings import PolicySettings, SimulationSettings, TrainingSettings, get_default_settings
+from src.config.settings import SimulationSettings, TrainingSettings, get_default_settings
 
 
 DEFAULT_ACTION_COLUMN = "recommended_action"
 DEFAULT_REASON_COLUMN = "decision_reason"
 DEFAULT_VOLUME_COLUMN = "daily_energy_mwh"
 
-SUPPORTED_POLICY_ACTIONS = {
-    "do_nothing",
-    "buy_m1_future",
-    "shift_production",
-}
+ACTION_DO_NOTHING = ACTIONS[0]
+ACTION_BUY_M1_FUTURE = ACTIONS[1]
+ACTION_SHIFT_PRODUCTION = ACTIONS[2]
+
+SUPPORTED_POLICY_ACTIONS = {ACTION_DO_NOTHING, ACTION_BUY_M1_FUTURE, ACTION_SHIFT_PRODUCTION}
 
 
 class PolicySimulationError(Exception):
@@ -44,8 +47,8 @@ class PolicySimulationConfig:
 
     action_column: str = DEFAULT_ACTION_COLUMN
     reason_column: str = DEFAULT_REASON_COLUMN
-    spot_column: str = DEFAULT_SPOT_COLUMN
-    future_column: str = DEFAULT_FUTURE_COLUMN
+    spot_column: str = SPOT_PRICE_COLUMN
+    future_column: str = PRIMARY_FUTURE_COLUMN
     volume_column: str = DEFAULT_VOLUME_COLUMN
     default_daily_volume: float = DEFAULT_DAILY_VOLUME
 
@@ -59,14 +62,13 @@ class PolicySimulationConfig:
         cls,
         training_settings: TrainingSettings,
         simulation_settings: SimulationSettings,
-        policy_settings: PolicySettings,
     ) -> "PolicySimulationConfig":
         """Build policy simulation config from centralized project settings."""
         return cls(
             action_column=DEFAULT_ACTION_COLUMN,
             reason_column=DEFAULT_REASON_COLUMN,
             spot_column=training_settings.target_column,
-            future_column=DEFAULT_FUTURE_COLUMN,
+            future_column=PRIMARY_FUTURE_COLUMN,
             volume_column=DEFAULT_VOLUME_COLUMN,
             default_daily_volume=simulation_settings.default_daily_volume,
             hedge_ratio_on_buy_future=simulation_settings.hedge_ratio_on_buy_future,
@@ -81,8 +83,20 @@ def get_default_policy_simulation_config() -> PolicySimulationConfig:
     return PolicySimulationConfig.from_project_settings(
         settings.training,
         settings.simulation,
-        settings.policy,
     )
+
+
+def _validate_action_catalog() -> None:
+    """Validate the centralized action catalog used by the policy simulator."""
+    expected_actions = {
+        ACTION_DO_NOTHING,
+        ACTION_BUY_M1_FUTURE,
+        ACTION_SHIFT_PRODUCTION,
+    }
+    if len(ACTIONS) < 3 or set(ACTIONS[:3]) != expected_actions:
+        raise PolicySimulationError(
+            "Centralized ACTIONS constant must contain the expected policy action labels in the first three positions."
+        )
 
 
 # =========================
@@ -98,7 +112,7 @@ def _validate_input_dataframe(
         raise PolicySimulationError("Input dataframe is empty.")
 
     required_columns = [
-        "date",
+        DATE_COLUMN,
         config.action_column,
         config.spot_column,
     ]
@@ -109,15 +123,15 @@ def _validate_input_dataframe(
         )
 
     validated_df = df.copy()
-    validated_df["date"] = pd.to_datetime(validated_df["date"], errors="coerce")
+    validated_df[DATE_COLUMN] = pd.to_datetime(validated_df[DATE_COLUMN], errors="coerce")
 
-    if validated_df["date"].isna().any():
-        invalid_count = int(validated_df["date"].isna().sum())
+    if validated_df[DATE_COLUMN].isna().any():
+        invalid_count = int(validated_df[DATE_COLUMN].isna().sum())
         raise PolicySimulationError(
             f"Found {invalid_count} invalid date values in policy simulation input."
         )
 
-    if validated_df["date"].duplicated().any():
+    if validated_df[DATE_COLUMN].duplicated().any():
         raise PolicySimulationError("Input dataframe contains duplicated dates.")
 
     if not 0 <= config.hedge_ratio_on_buy_future <= 1:
@@ -132,7 +146,7 @@ def _validate_input_dataframe(
             f"Unsupported policy actions found: {sorted(invalid_actions)}"
         )
 
-    return validated_df.sort_values("date").reset_index(drop=True)
+    return validated_df.sort_values(DATE_COLUMN).reset_index(drop=True)
 
 
 
@@ -163,10 +177,10 @@ def _ensure_volume_column(df: pd.DataFrame, config: PolicySimulationConfig) -> p
 
 def _validate_future_column_if_needed(df: pd.DataFrame, config: PolicySimulationConfig) -> None:
     """Require a futures column if the policy uses buy_m1_future at least once."""
-    needs_future = (df[config.action_column] == "buy_m1_future").any()
+    needs_future = (df[config.action_column] == ACTION_BUY_M1_FUTURE).any()
     if needs_future and config.future_column not in df.columns:
         raise PolicySimulationError(
-            f"Policy includes 'buy_m1_future' but futures column '{config.future_column}' is missing."
+            f"Policy includes '{ACTION_BUY_M1_FUTURE}' but futures column '{config.future_column}' is missing."
         )
 
 
@@ -201,10 +215,10 @@ def _simulate_policy_row(row: pd.Series, config: PolicySimulationConfig) -> dict
         "total_cost": float(volume) * float(spot_price),
     }
 
-    if action == "do_nothing":
+    if action == ACTION_DO_NOTHING:
         return result
 
-    if action == "buy_m1_future":
+    if action == ACTION_BUY_M1_FUTURE:
         future_price = pd.to_numeric(pd.Series([row.get(config.future_column, pd.NA)]), errors="coerce").iloc[0]
         if pd.isna(future_price):
             raise PolicySimulationError(
@@ -229,7 +243,7 @@ def _simulate_policy_row(row: pd.Series, config: PolicySimulationConfig) -> dict
         )
         return result
 
-    if action == "shift_production":
+    if action == ACTION_SHIFT_PRODUCTION:
         shifted_volume = float(volume) * config.shift_fraction
         spot_volume = float(volume) - shifted_volume
         shift_penalty_cost = shifted_volume * config.shift_penalty_per_mwh
@@ -265,6 +279,7 @@ def simulate_policy_strategy(
     cost components for transparent backtesting.
     """
     config = get_default_policy_simulation_config() if config is None else config
+    _validate_action_catalog()
 
     simulation_df = _validate_input_dataframe(df, config)
     simulation_df = _ensure_volume_column(simulation_df, config)
@@ -277,7 +292,7 @@ def simulate_policy_strategy(
     )
 
     output_df = simulation_df.copy()
-    output_df["strategy_name"] = "heuristic_policy"
+    output_df["strategy_name"] = STRATEGY_HEURISTIC_POLICY
 
     for column in row_outputs.columns:
         output_df[column] = row_outputs[column]
@@ -314,9 +329,9 @@ def summarize_policy_simulation(simulation_df: pd.DataFrame) -> pd.DataFrame:
             "total_cost": [total_cost],
             "average_unit_cost": [avg_unit_cost],
             "daily_cost_volatility": [daily_cost_volatility],
-            "n_buy_m1_future_days": [int((simulation_df["action_taken"] == "buy_m1_future").sum())],
-            "n_shift_production_days": [int((simulation_df["action_taken"] == "shift_production").sum())],
-            "n_do_nothing_days": [int((simulation_df["action_taken"] == "do_nothing").sum())],
+            "n_buy_m1_future_days": [int((simulation_df["action_taken"] == ACTION_BUY_M1_FUTURE).sum())],
+            "n_shift_production_days": [int((simulation_df["action_taken"] == ACTION_SHIFT_PRODUCTION).sum())],
+            "n_do_nothing_days": [int((simulation_df["action_taken"] == ACTION_DO_NOTHING).sum())],
         }
     )
 
@@ -326,17 +341,17 @@ def summarize_policy_simulation(simulation_df: pd.DataFrame) -> pd.DataFrame:
 if __name__ == "__main__":
     example_df = pd.DataFrame(
         {
-            "date": pd.date_range("2025-01-01", periods=6, freq="D"),
-            "Spot_Price_SPEL": [70, 75, 80, 78, 82, 76],
-            "Future_M1_Price": [72, 73, 74, 75, 76, 77],
-            "daily_energy_mwh": [10, 10, 10, 10, 10, 10],
+            DATE_COLUMN: pd.date_range("2025-01-01", periods=6, freq="D"),
+            SPOT_PRICE_COLUMN: [70, 75, 80, 78, 82, 76],
+            PRIMARY_FUTURE_COLUMN: [72, 73, 74, 75, 76, 77],
+            DEFAULT_VOLUME_COLUMN: [10, 10, 10, 10, 10, 10],
             "recommended_action": [
-                "do_nothing",
-                "buy_m1_future",
-                "buy_m1_future",
-                "shift_production",
-                "do_nothing",
-                "shift_production",
+                ACTION_DO_NOTHING,
+                ACTION_BUY_M1_FUTURE,
+                ACTION_BUY_M1_FUTURE,
+                ACTION_SHIFT_PRODUCTION,
+                ACTION_DO_NOTHING,
+                ACTION_SHIFT_PRODUCTION,
             ],
             "decision_reason": [
                 "No rule triggered.",
@@ -360,7 +375,7 @@ if __name__ == "__main__":
     print(
         simulated_df[
             [
-                "date",
+                DATE_COLUMN,
                 "action_taken",
                 "spot_price",
                 "future_price",

@@ -13,6 +13,7 @@ from pathlib import Path
 import matplotlib.pyplot as plt
 import pandas as pd
 
+from src.config.constants import DATE_COLUMN
 from src.config.paths import FIGURES_DIR
 
 
@@ -20,7 +21,7 @@ class ForecastPlotError(Exception):
     """Raised when forecast plots cannot be generated safely."""
 
 
-REQUIRED_COLUMNS = {"date", "y_true"}
+REQUIRED_COLUMNS = {DATE_COLUMN, "y_true"}
 
 
 # =========================
@@ -50,16 +51,16 @@ def _validate_forecast_df(df: pd.DataFrame) -> pd.DataFrame:
 
     result_df = df.copy()
 
-    if "date" in result_df.columns:
-        result_df["date"] = pd.to_datetime(result_df["date"], errors="coerce")
-        if result_df["date"].isna().any():
-            invalid_count = int(result_df["date"].isna().sum())
+    if DATE_COLUMN in result_df.columns:
+        result_df[DATE_COLUMN] = pd.to_datetime(result_df[DATE_COLUMN], errors="coerce")
+        if result_df[DATE_COLUMN].isna().any():
+            invalid_count = int(result_df[DATE_COLUMN].isna().sum())
             raise ForecastPlotError(
                 f"Found {invalid_count} invalid date values in forecast dataframe."
             )
-        if result_df["date"].duplicated().any():
+        if result_df[DATE_COLUMN].duplicated().any():
             raise ForecastPlotError("Forecast dataframe contains duplicated dates.")
-        result_df = result_df.sort_values("date").reset_index(drop=True)
+        result_df = result_df.sort_values(DATE_COLUMN).reset_index(drop=True)
 
     return result_df
 
@@ -81,7 +82,7 @@ def plot_actual_vs_forecast(
     Parameters
     ----------
     forecast_df : pd.DataFrame
-        Dataframe containing at least `date`, `y_true`, and the selected forecast column.
+        Dataframe containing at least the configured date column, `y_true`, and the selected forecast column.
     forecast_column : str
         Column name for the forecast to plot.
     """
@@ -92,13 +93,13 @@ def plot_actual_vs_forecast(
             f"Forecast column '{forecast_column}' not found in forecast dataframe."
         )
 
-    x_axis = df["date"] if "date" in df.columns else df.index
+    x_axis = df[DATE_COLUMN] if DATE_COLUMN in df.columns else df.index
 
     plt.figure(figsize=(12, 6))
     plt.plot(x_axis, df["y_true"], label="y_true")
     plt.plot(x_axis, df[forecast_column], label=forecast_column)
     plt.title(title)
-    plt.xlabel("Date" if "date" in df.columns else "Index")
+    plt.xlabel("Date" if DATE_COLUMN in df.columns else "Index")
     plt.ylabel("Target Value")
     plt.legend()
     plt.tight_layout()
@@ -135,7 +136,7 @@ def plot_multiple_forecasts(
             f"Forecast dataframe is missing forecast columns: {missing_columns}"
         )
 
-    x_axis = df["date"] if "date" in df.columns else df.index
+    x_axis = df[DATE_COLUMN] if DATE_COLUMN in df.columns else df.index
 
     plt.figure(figsize=(12, 6))
     plt.plot(x_axis, df["y_true"], label="y_true")
@@ -143,7 +144,7 @@ def plot_multiple_forecasts(
         plt.plot(x_axis, df[column], label=column)
 
     plt.title(title)
-    plt.xlabel("Date" if "date" in df.columns else "Index")
+    plt.xlabel("Date" if DATE_COLUMN in df.columns else "Index")
     plt.ylabel("Target Value")
     plt.legend()
     plt.tight_layout()
@@ -179,14 +180,14 @@ def plot_forecast_error(
             f"Forecast column '{forecast_column}' not found in forecast dataframe."
         )
 
-    x_axis = df["date"] if "date" in df.columns else df.index
+    x_axis = df[DATE_COLUMN] if DATE_COLUMN in df.columns else df.index
     error_series = df["y_true"] - df[forecast_column]
 
     plt.figure(figsize=(12, 5))
     plt.plot(x_axis, error_series, label=f"y_true - {forecast_column}")
     plt.axhline(0, linewidth=1)
     plt.title(title)
-    plt.xlabel("Date" if "date" in df.columns else "Index")
+    plt.xlabel("Date" if DATE_COLUMN in df.columns else "Index")
     plt.ylabel("Forecast Error")
     plt.legend()
     plt.tight_layout()
@@ -239,7 +240,7 @@ def plot_forecast_scatter(
 if __name__ == "__main__":
     example_df = pd.DataFrame(
         {
-            "date": pd.date_range("2025-01-01", periods=10, freq="D"),
+            DATE_COLUMN: pd.date_range("2025-01-01", periods=10, freq="D"),
             "y_true": [70, 75, 80, 78, 82, 76, 74, 79, 81, 77],
             "baseline_forecast": [72, 74, 79, 79, 81, 77, 73, 78, 80, 78],
             "quantile_q50": [71, 75, 78, 78, 80, 76, 74, 79, 80, 77],

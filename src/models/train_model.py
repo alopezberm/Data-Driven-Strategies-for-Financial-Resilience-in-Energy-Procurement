@@ -1,5 +1,3 @@
-
-
 """
 train_model.py
 
@@ -16,6 +14,8 @@ from typing import Any
 
 import pandas as pd
 
+from src.config.constants import DATE_COLUMN, DEFAULT_FORECAST_HORIZON, DEFAULT_QUANTILES, TARGET_COLUMN
+from src.config.settings import TrainingSettings, get_default_settings
 from src.models.baseline_models import (
     BaselineResults,
     linear_regression_baseline,
@@ -53,6 +53,11 @@ class QuantileTrainingOutput:
     used_features: list[str]
 
 
+def get_default_training_settings() -> TrainingSettings:
+    """Return default training settings from the project configuration."""
+    return get_default_settings().training
+
+
 # =========================
 # Validation helpers
 # =========================
@@ -65,8 +70,10 @@ def _validate_train_eval_data(train_df: pd.DataFrame, eval_df: pd.DataFrame) -> 
         raise TrainModelError("eval_df is empty.")
 
     for df_name, df in {"train_df": train_df, "eval_df": eval_df}.items():
-        if "date" not in df.columns:
-            raise TrainModelError(f"{df_name} must contain a 'date' column.")
+        if DATE_COLUMN not in df.columns:
+            raise TrainModelError(
+                f"{df_name} must contain a '{DATE_COLUMN}' column."
+            )
 
 
 # =========================
@@ -76,8 +83,8 @@ def _validate_train_eval_data(train_df: pd.DataFrame, eval_df: pd.DataFrame) -> 
 def train_baseline_suite(
     train_df: pd.DataFrame,
     eval_df: pd.DataFrame,
-    target_column: str = "Spot_Price_SPEL",
-    horizon: int = 1,
+    target_column: str = TARGET_COLUMN,
+    horizon: int = DEFAULT_FORECAST_HORIZON,
     rolling_window: int = 7,
     seasonal_lag: int = 7,
 ) -> BaselineTrainingOutput:
@@ -141,8 +148,8 @@ def train_quantile_suite(
     train_df: pd.DataFrame,
     eval_df: pd.DataFrame,
     quantiles: list[float] | None = None,
-    target_column: str = "Spot_Price_SPEL",
-    horizon: int = 1,
+    target_column: str = TARGET_COLUMN,
+    horizon: int = DEFAULT_FORECAST_HORIZON,
     feature_columns: list[str] | None = None,
     model_params: dict | None = None,
 ) -> QuantileTrainingOutput:
@@ -153,6 +160,9 @@ def train_quantile_suite(
     more structured output object for notebooks and pipelines.
     """
     _validate_train_eval_data(train_df, eval_df)
+
+    training_settings = get_default_training_settings()
+    quantiles = list(training_settings.quantiles) if quantiles is None else quantiles
 
     results, models, used_features = train_quantile_models(
         train_df=train_df,
@@ -185,6 +195,8 @@ def train_quantile_suite(
 # =========================
 # Unified training entrypoint
 # =========================
+
+SUPPORTED_MODEL_FAMILIES = ["baseline", "quantile"]
 
 def train_model(
     model_family: str,
@@ -222,21 +234,22 @@ def train_model(
         return train_quantile_suite(train_df, eval_df, **kwargs)
 
     raise TrainModelError(
-        "Unsupported model_family. Use one of: ['baseline', 'quantile']."
+        f"Unsupported model_family. Use one of: {SUPPORTED_MODEL_FAMILIES}."
     )
 
 
 if __name__ == "__main__":
+    training_settings = get_default_training_settings()
     train_example = pd.DataFrame(
         {
-            "date": pd.date_range("2024-01-01", periods=80, freq="D"),
-            "Spot_Price_SPEL": range(80),
-            "Spot_Price_SPEL_lag_1": pd.Series(range(80)).shift(1),
-            "Spot_Price_SPEL_lag_2": pd.Series(range(80)).shift(2),
-            "Spot_Price_SPEL_lag_3": pd.Series(range(80)).shift(3),
-            "Spot_Price_SPEL_lag_7": pd.Series(range(80)).shift(7),
-            "Spot_Price_SPEL_lag_14": pd.Series(range(80)).shift(14),
-            "Spot_Price_SPEL_lag_28": pd.Series(range(80)).shift(28),
+            DATE_COLUMN: pd.date_range("2024-01-01", periods=80, freq="D"),
+            TARGET_COLUMN: range(80),
+            f"{TARGET_COLUMN}_lag_1": pd.Series(range(80)).shift(1),
+            f"{TARGET_COLUMN}_lag_2": pd.Series(range(80)).shift(2),
+            f"{TARGET_COLUMN}_lag_3": pd.Series(range(80)).shift(3),
+            f"{TARGET_COLUMN}_lag_7": pd.Series(range(80)).shift(7),
+            f"{TARGET_COLUMN}_lag_14": pd.Series(range(80)).shift(14),
+            f"{TARGET_COLUMN}_lag_28": pd.Series(range(80)).shift(28),
             "Future_M1_Price_lag_1": pd.Series(range(100, 180)).shift(1),
             "Future_M1_Price_lag_7": pd.Series(range(100, 180)).shift(7),
             "Future_M1_OpenInterest_lag_1": pd.Series(range(1000, 1080)).shift(1),
@@ -254,3 +267,11 @@ if __name__ == "__main__":
     baseline_output = train_model("baseline", train_example, eval_example)
     print("Baseline summary:")
     print(baseline_output.summary)
+    quantile_output = train_model(
+        "quantile",
+        train_example,
+        eval_example,
+        quantiles=training_settings.quantiles,
+    )
+    print("\nQuantile summary:")
+    print(quantile_output.summary)

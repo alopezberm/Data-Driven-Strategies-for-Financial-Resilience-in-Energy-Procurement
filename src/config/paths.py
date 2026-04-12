@@ -7,6 +7,12 @@ Ensures consistent and reproducible file handling across modules.
 
 from pathlib import Path
 
+from src.config.constants import (
+    OUTPUT_BACKTESTS_DIRNAME,
+    OUTPUT_FIGURES_DIRNAME,
+    OUTPUT_POLICIES_DIRNAME,
+)
+
 # =========================
 # ROOT DIRECTORY
 # =========================
@@ -62,10 +68,10 @@ FEATURE_DICTIONARY_FILE = PROCESSED_DATA_DIR / "feature_dictionary.csv"
 # OUTPUT DIRECTORIES
 # =========================
 
-FORECASTS_DIR = OUTPUTS_DIR / "forecasts"
-BACKTESTS_DIR = OUTPUTS_DIR / "backtests"
-POLICIES_DIR = OUTPUTS_DIR / "policies"
-FIGURES_DIR = OUTPUTS_DIR / "figures"
+FORECASTS_DIR = OUTPUTS_DIR / "forecasts"  # keep as-is (not yet in constants)
+BACKTESTS_DIR = OUTPUTS_DIR / OUTPUT_BACKTESTS_DIRNAME
+POLICIES_DIR = OUTPUTS_DIR / OUTPUT_POLICIES_DIRNAME
+FIGURES_DIR = OUTPUTS_DIR / OUTPUT_FIGURES_DIRNAME
 
 # =========================
 # UTILITY FUNCTION
@@ -92,6 +98,20 @@ def create_directories():
 
     for directory in directories:
         directory.mkdir(parents=True, exist_ok=True)
+
+
+# Utility to get output path by category
+def get_output_path(category: str) -> Path:
+    """Return a path inside the outputs directory based on category name."""
+    mapping = {
+        "forecasts": FORECASTS_DIR,
+        OUTPUT_BACKTESTS_DIRNAME: BACKTESTS_DIR,
+        OUTPUT_POLICIES_DIRNAME: POLICIES_DIR,
+        OUTPUT_FIGURES_DIRNAME: FIGURES_DIR,
+    }
+    if category not in mapping:
+        raise ValueError(f"Unknown output category: {category}")
+    return mapping[category]
 
 
 if __name__ == "__main__":

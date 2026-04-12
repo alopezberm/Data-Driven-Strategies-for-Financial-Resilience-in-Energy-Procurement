@@ -13,13 +13,15 @@ from typing import Sequence
 
 import pandas as pd
 
+from src.config.constants import ACTIONS, DATE_COLUMN
+
 
 class PolicyEvaluationError(Exception):
     """Raised when policy evaluation cannot be performed safely."""
 
 
 REQUIRED_POLICY_COLUMNS = {
-    "date",
+    DATE_COLUMN,
     "recommended_action",
 }
 
@@ -31,6 +33,24 @@ OPTIONAL_SIMULATION_COLUMNS = {
     "shift_penalty_cost",
     "energy_volume_mwh",
 }
+
+
+ACTION_DO_NOTHING = ACTIONS[0]
+ACTION_BUY_M1_FUTURE = ACTIONS[1]
+ACTION_SHIFT_PRODUCTION = ACTIONS[2]
+
+
+def _validate_action_catalog() -> None:
+    """Validate the centralized action catalog used by this module."""
+    expected_actions = {
+        ACTION_DO_NOTHING,
+        ACTION_BUY_M1_FUTURE,
+        ACTION_SHIFT_PRODUCTION,
+    }
+    if len(ACTIONS) < 3 or set(ACTIONS[:3]) != expected_actions:
+        raise PolicyEvaluationError(
+            "Centralized ACTIONS constant must contain the expected action labels in the first three positions."
+        )
 
 
 # =========================
@@ -49,22 +69,23 @@ def _validate_policy_df(policy_df: pd.DataFrame) -> pd.DataFrame:
         )
 
     result_df = policy_df.copy()
-    result_df["date"] = pd.to_datetime(result_df["date"], errors="coerce")
+    result_df[DATE_COLUMN] = pd.to_datetime(result_df[DATE_COLUMN], errors="coerce")
 
-    if result_df["date"].isna().any():
-        invalid_count = int(result_df["date"].isna().sum())
+    if result_df[DATE_COLUMN].isna().any():
+        invalid_count = int(result_df[DATE_COLUMN].isna().sum())
         raise PolicyEvaluationError(
             f"Found {invalid_count} invalid date values in policy dataframe."
         )
 
-    if result_df["date"].duplicated().any():
+    if result_df[DATE_COLUMN].duplicated().any():
         raise PolicyEvaluationError("Policy dataframe contains duplicated dates.")
 
-    return result_df.sort_values("date").reset_index(drop=True)
+    return result_df.sort_values(DATE_COLUMN).reset_index(drop=True)
 
 
 def _resolve_action_column(df: pd.DataFrame) -> str:
     """Resolve the action column name used in the provided dataframe."""
+    _validate_action_catalog()
     if "recommended_action" in df.columns:
         return "recommended_action"
     if "action_taken" in df.columns:
@@ -89,11 +110,12 @@ def summarize_policy_actions(policy_df: pd.DataFrame) -> pd.DataFrame:
     """
     df = _validate_policy_df(policy_df)
     action_column = _resolve_action_column(df)
+    output_action_column = "recommended_action"
 
     summary_df = (
         df[action_column]
         .value_counts(dropna=False)
-        .rename_axis("recommended_action")
+        .rename_axis(output_action_column)
         .reset_index(name="n_days")
     )
     summary_df["share"] = summary_df["n_days"] / len(df)
@@ -112,8 +134,8 @@ def summarize_policy_time_coverage(policy_df: pd.DataFrame) -> pd.DataFrame:
     return pd.DataFrame(
         {
             "n_days": [int(len(df))],
-            "start_date": [df["date"].min()],
-            "end_date": [df["date"].max()],
+            "start_date": [df[DATE_COLUMN].min()],
+            "end_date": [df[DATE_COLUMN].max()],
             "n_unique_actions": [int(df[action_column].nunique(dropna=True))],
         }
     )
@@ -290,6 +312,7 @@ def build_policy_evaluation_report(policy_df: pd.DataFrame) -> dict[str, pd.Data
     dict[str, pd.DataFrame]
         Dictionary containing several policy summary tables.
     """
+    _validate_action_catalog()
     report: dict[str, pd.DataFrame] = {
         "action_summary": summarize_policy_actions(policy_df),
         "time_coverage_summary": summarize_policy_time_coverage(policy_df),
@@ -317,16 +340,16 @@ def build_policy_evaluation_report(policy_df: pd.DataFrame) -> dict[str, pd.Data
 if __name__ == "__main__":
     example_df = pd.DataFrame(
         {
-            "date": pd.date_range("2025-01-01", periods=8, freq="D"),
+            DATE_COLUMN: pd.date_range("2025-01-01", periods=8, freq="D"),
             "recommended_action": [
-                "do_nothing",
-                "buy_m1_future",
-                "buy_m1_future",
-                "shift_production",
-                "do_nothing",
-                "buy_m1_future",
-                "shift_production",
-                "do_nothing",
+                ACTION_DO_NOTHING,
+                ACTION_BUY_M1_FUTURE,
+                ACTION_BUY_M1_FUTURE,
+                ACTION_SHIFT_PRODUCTION,
+                ACTION_DO_NOTHING,
+                ACTION_BUY_M1_FUTURE,
+                ACTION_SHIFT_PRODUCTION,
+                ACTION_DO_NOTHING,
             ],
             "decision_reason": [
                 "No rule triggered.",

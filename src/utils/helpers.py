@@ -1,5 +1,3 @@
-
-
 """
 helpers.py
 
@@ -13,9 +11,15 @@ from typing import Any, Iterable
 
 import pandas as pd
 
+from src.config.constants import DATE_COLUMN
+from src.utils.logger import get_logger
+
 
 class HelperError(Exception):
     """Raised when a helper utility fails."""
+
+
+logger = get_logger(__name__)
 
 
 # =========================
@@ -43,12 +47,28 @@ def ensure_list(obj: Any) -> list:
 
 def flatten_list(nested: Iterable[Iterable[Any]]) -> list:
     """Flatten a nested iterable into a single list."""
-    return [item for sublist in nested for item in sublist]
+    result: list[Any] = []
+    for sub in nested:
+        if isinstance(sub, (list, tuple, set)):
+            result.extend(sub)
+        else:
+            result.append(sub)
+    return result
 
 
 # =========================
 # DataFrame helpers
 # =========================
+
+def check_columns_exist(df: pd.DataFrame, columns: list[str]) -> None:
+    """Raise HelperError if any required columns are missing from the DataFrame."""
+    if not isinstance(df, pd.DataFrame):
+        raise HelperError("Input must be a pandas DataFrame.")
+
+    missing = [column for column in columns if column not in df.columns]
+    if missing:
+        raise HelperError(f"Missing columns: {missing}")
+
 
 def safe_copy(df: pd.DataFrame) -> pd.DataFrame:
     """Return a safe copy of a DataFrame."""
@@ -58,7 +78,7 @@ def safe_copy(df: pd.DataFrame) -> pd.DataFrame:
 
 
 
-def sort_by_date(df: pd.DataFrame, date_column: str = "date") -> pd.DataFrame:
+def sort_by_date(df: pd.DataFrame, date_column: str = DATE_COLUMN) -> pd.DataFrame:
     """
     Sort a DataFrame by a date column.
 
@@ -89,6 +109,10 @@ def align_on_index(*dfs: pd.DataFrame) -> list[pd.DataFrame]:
     if not dfs:
         raise HelperError("No DataFrames provided for alignment.")
 
+    for df in dfs:
+        if not isinstance(df, pd.DataFrame):
+            raise HelperError("All inputs must be pandas DataFrames.")
+
     common_index = dfs[0].index
     for df in dfs[1:]:
         common_index = common_index.intersection(df.index)
@@ -98,10 +122,16 @@ def align_on_index(*dfs: pd.DataFrame) -> list[pd.DataFrame]:
 
 
 def add_prefix_to_columns(df: pd.DataFrame, prefix: str) -> pd.DataFrame:
-    """Add a prefix to all column names except 'date'."""
+    """Add a prefix to all column names except the configured date column."""
+    if not isinstance(df, pd.DataFrame):
+        raise HelperError("Input must be a pandas DataFrame.")
+
+    if any(col.startswith(prefix) for col in df.columns if col != DATE_COLUMN):
+        raise HelperError("Some columns already contain the requested prefix.")
+
     result = df.copy()
     result.columns = [
-        col if col == "date" else f"{prefix}{col}"
+        col if col == DATE_COLUMN else f"{prefix}{col}"
         for col in result.columns
     ]
     return result
@@ -112,19 +142,22 @@ def add_prefix_to_columns(df: pd.DataFrame, prefix: str) -> pd.DataFrame:
 # =========================
 
 def print_df_info(df: pd.DataFrame, name: str = "dataframe") -> None:
-    """Print basic info about a DataFrame."""
-    print(f"\n=== {name.upper()} ===")
-    print(f"Shape: {df.shape}")
-    print(f"Columns: {len(df.columns)}")
-    print("Head:")
-    print(df.head())
+    """Log basic info about a DataFrame."""
+    if not isinstance(df, pd.DataFrame):
+        raise HelperError("Input must be a pandas DataFrame.")
+
+    logger.info(f"=== {name.upper()} ===")
+    logger.info(f"Shape: {df.shape}")
+    logger.info(f"Columns: {len(df.columns)}")
+    logger.info("Head:")
+    logger.info(f"\n{df.head()}")
 
 
 if __name__ == "__main__":
     # Simple smoke test
     df = pd.DataFrame(
         {
-            "date": ["2024-01-02", "2024-01-01"],
+            DATE_COLUMN: ["2024-01-02", "2024-01-01"],
             "value": [2, 1],
         }
     )

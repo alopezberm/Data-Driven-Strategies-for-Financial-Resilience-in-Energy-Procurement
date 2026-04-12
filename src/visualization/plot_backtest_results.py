@@ -1,5 +1,3 @@
-
-
 """
 plot_backtest_results.py
 
@@ -16,6 +14,7 @@ from typing import Sequence
 import matplotlib.pyplot as plt
 import pandas as pd
 
+from src.config.constants import ACTIONS, DATE_COLUMN, DEFAULT_REFERENCE_STRATEGY, STRATEGY_HEURISTIC_POLICY, STRATEGY_SPOT_ONLY, STRATEGY_STATIC_HEDGE
 from src.config.paths import FIGURES_DIR
 
 
@@ -24,11 +23,44 @@ class BacktestPlotError(Exception):
 
 
 REQUIRED_SIMULATION_COLUMNS = {
-    "date",
+    DATE_COLUMN,
     "strategy_name",
     "total_cost",
     "energy_volume_mwh",
 }
+
+
+ACTION_DO_NOTHING = ACTIONS[0]
+ACTION_BUY_M1_FUTURE = ACTIONS[1]
+ACTION_SHIFT_PRODUCTION = ACTIONS[2]
+
+
+
+def _validate_strategy_catalog() -> None:
+    """Validate the centralized strategy catalog used by this module."""
+    expected_strategies = {
+        STRATEGY_SPOT_ONLY,
+        STRATEGY_STATIC_HEDGE,
+        STRATEGY_HEURISTIC_POLICY,
+    }
+    if {STRATEGY_SPOT_ONLY, STRATEGY_STATIC_HEDGE, STRATEGY_HEURISTIC_POLICY} != expected_strategies:
+        raise BacktestPlotError(
+            "Centralized strategy constants are inconsistent."
+        )
+
+
+
+def _validate_action_catalog() -> None:
+    """Validate the centralized action catalog used by this module."""
+    expected_actions = {
+        ACTION_DO_NOTHING,
+        ACTION_BUY_M1_FUTURE,
+        ACTION_SHIFT_PRODUCTION,
+    }
+    if len(ACTIONS) < 3 or set(ACTIONS[:3]) != expected_actions:
+        raise BacktestPlotError(
+            "Centralized ACTIONS constant must contain the expected action labels in the first three positions."
+        )
 
 
 # =========================
@@ -47,14 +79,14 @@ def _validate_single_simulation_df(simulation_df: pd.DataFrame) -> pd.DataFrame:
         )
 
     validated_df = simulation_df.copy()
-    validated_df["date"] = pd.to_datetime(validated_df["date"], errors="coerce")
+    validated_df[DATE_COLUMN] = pd.to_datetime(validated_df[DATE_COLUMN], errors="coerce")
     validated_df["total_cost"] = pd.to_numeric(validated_df["total_cost"], errors="coerce")
     validated_df["energy_volume_mwh"] = pd.to_numeric(
         validated_df["energy_volume_mwh"], errors="coerce"
     )
 
-    if validated_df["date"].isna().any():
-        invalid_count = int(validated_df["date"].isna().sum())
+    if validated_df[DATE_COLUMN].isna().any():
+        invalid_count = int(validated_df[DATE_COLUMN].isna().sum())
         raise BacktestPlotError(
             f"Found {invalid_count} invalid date values in a simulation dataframe."
         )
@@ -62,7 +94,7 @@ def _validate_single_simulation_df(simulation_df: pd.DataFrame) -> pd.DataFrame:
     if validated_df["total_cost"].isna().any():
         raise BacktestPlotError("Simulation dataframe contains invalid total_cost values.")
 
-    if validated_df["date"].duplicated().any():
+    if validated_df[DATE_COLUMN].duplicated().any():
         raise BacktestPlotError("A simulation dataframe contains duplicated dates.")
 
     strategy_names = validated_df["strategy_name"].dropna().unique()
@@ -71,12 +103,14 @@ def _validate_single_simulation_df(simulation_df: pd.DataFrame) -> pd.DataFrame:
             "Each simulation dataframe must contain exactly one strategy_name."
         )
 
-    return validated_df.sort_values("date").reset_index(drop=True)
+    return validated_df.sort_values(DATE_COLUMN).reset_index(drop=True)
 
 
 
 def _validate_simulation_collection(simulation_dfs: Sequence[pd.DataFrame]) -> list[pd.DataFrame]:
     """Validate a collection of simulation dataframes."""
+    _validate_strategy_catalog()
+
     if not simulation_dfs:
         raise BacktestPlotError("simulation_dfs cannot be empty.")
 
@@ -88,9 +122,9 @@ def _validate_simulation_collection(simulation_dfs: Sequence[pd.DataFrame]) -> l
             f"Strategy names must be unique across simulations. Found: {strategy_names}"
         )
 
-    reference_dates = validated_dfs[0]["date"]
+    reference_dates = validated_dfs[0][DATE_COLUMN]
     for df in validated_dfs[1:]:
-        if not df["date"].equals(reference_dates):
+        if not df[DATE_COLUMN].equals(reference_dates):
             raise BacktestPlotError(
                 "All simulation dataframes must share the same ordered date index."
             )
@@ -124,7 +158,7 @@ def plot_daily_costs(
     plt.figure(figsize=(12, 6))
     for df in validated_dfs:
         strategy_name = df["strategy_name"].iloc[0]
-        plt.plot(df["date"], df["total_cost"], label=strategy_name)
+        plt.plot(df[DATE_COLUMN], df["total_cost"], label=strategy_name)
 
     plt.title(title)
     plt.xlabel("Date")
@@ -156,7 +190,7 @@ def plot_cumulative_costs(
     for df in validated_dfs:
         strategy_name = df["strategy_name"].iloc[0]
         cumulative_cost = df["total_cost"].cumsum()
-        plt.plot(df["date"], cumulative_cost, label=strategy_name)
+        plt.plot(df[DATE_COLUMN], cumulative_cost, label=strategy_name)
 
     plt.title(title)
     plt.xlabel("Date")
@@ -177,7 +211,7 @@ def plot_cumulative_costs(
 
 def plot_daily_savings_vs_reference(
     simulation_dfs: Sequence[pd.DataFrame],
-    reference_strategy_name: str = "spot_only",
+    reference_strategy_name: str = DEFAULT_REFERENCE_STRATEGY,
     title: str = "Daily Savings vs Reference Strategy",
     save_path: str | None = None,
     show: bool = True,
@@ -199,7 +233,7 @@ def plot_daily_savings_vs_reference(
         if strategy_name == reference_strategy_name:
             continue
         daily_savings = reference_cost - df["total_cost"].values
-        plt.plot(df["date"], daily_savings, label=f"{strategy_name} vs {reference_strategy_name}")
+        plt.plot(df[DATE_COLUMN], daily_savings, label=f"{strategy_name} vs {reference_strategy_name}")
 
     plt.axhline(0, linewidth=1)
     plt.title(title)
@@ -267,6 +301,7 @@ def plot_action_timeline(
     - strategy_name
     """
     validated_df = _validate_single_simulation_df(policy_simulation_df)
+    _validate_action_catalog()
 
     if "action_taken" not in validated_df.columns:
         raise BacktestPlotError(
@@ -274,9 +309,9 @@ def plot_action_timeline(
         )
 
     action_to_y = {
-        "do_nothing": 0,
-        "buy_m1_future": 1,
-        "shift_production": 2,
+        ACTION_DO_NOTHING: 0,
+        ACTION_BUY_M1_FUTURE: 1,
+        ACTION_SHIFT_PRODUCTION: 2,
     }
 
     action_values = validated_df["action_taken"].map(action_to_y)
@@ -287,7 +322,7 @@ def plot_action_timeline(
         )
 
     plt.figure(figsize=(12, 4))
-    plt.scatter(validated_df["date"], action_values)
+    plt.scatter(validated_df[DATE_COLUMN], action_values)
     plt.yticks(list(action_to_y.values()), list(action_to_y.keys()))
     plt.title(title)
     plt.xlabel("Date")
@@ -309,8 +344,8 @@ if __name__ == "__main__":
 
     spot_only_df = pd.DataFrame(
         {
-            "date": dates,
-            "strategy_name": "spot_only",
+            DATE_COLUMN: dates,
+            "strategy_name": STRATEGY_SPOT_ONLY,
             "energy_volume_mwh": [10] * 6,
             "total_cost": [800, 1200, 950, 700, 1400, 900],
         }
@@ -318,8 +353,8 @@ if __name__ == "__main__":
 
     static_hedge_df = pd.DataFrame(
         {
-            "date": dates,
-            "strategy_name": "static_hedge",
+            DATE_COLUMN: dates,
+            "strategy_name": STRATEGY_STATIC_HEDGE,
             "energy_volume_mwh": [10] * 6,
             "total_cost": [850, 930, 920, 880, 980, 905],
         }
@@ -327,17 +362,17 @@ if __name__ == "__main__":
 
     heuristic_policy_df = pd.DataFrame(
         {
-            "date": dates,
-            "strategy_name": "heuristic_policy",
+            DATE_COLUMN: dates,
+            "strategy_name": STRATEGY_HEURISTIC_POLICY,
             "energy_volume_mwh": [10] * 6,
             "total_cost": [780, 910, 890, 760, 940, 875],
             "action_taken": [
-                "do_nothing",
-                "buy_m1_future",
-                "buy_m1_future",
-                "shift_production",
-                "do_nothing",
-                "shift_production",
+                ACTION_DO_NOTHING,
+                ACTION_BUY_M1_FUTURE,
+                ACTION_BUY_M1_FUTURE,
+                ACTION_SHIFT_PRODUCTION,
+                ACTION_DO_NOTHING,
+                ACTION_SHIFT_PRODUCTION,
             ],
         }
     )
@@ -346,6 +381,6 @@ if __name__ == "__main__":
 
     plot_daily_costs(all_simulations, show=False)
     plot_cumulative_costs(all_simulations, show=False)
-    plot_daily_savings_vs_reference(all_simulations, reference_strategy_name="spot_only", show=False)
+    plot_daily_savings_vs_reference(all_simulations, reference_strategy_name=STRATEGY_SPOT_ONLY, show=False)
     plot_total_cost_bar_chart(all_simulations, show=False)
     plot_action_timeline(heuristic_policy_df, show=False)

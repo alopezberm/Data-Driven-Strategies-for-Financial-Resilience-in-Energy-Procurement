@@ -1,5 +1,3 @@
-
-
 """
 build_future_features.py
 
@@ -13,25 +11,14 @@ from __future__ import annotations
 
 import pandas as pd
 
-
-PRICE_COLUMNS = [
-    "Spot_Price_SPEL",
-    "Future_M1_Price",
-    "Future_M2_Price",
-    "Future_M3_Price",
-    "Future_M4_Price",
-    "Future_M5_Price",
-    "Future_M6_Price",
-]
-
-OPEN_INTEREST_COLUMNS = [
-    "Future_M1_OpenInterest",
-    "Future_M2_OpenInterest",
-    "Future_M3_OpenInterest",
-    "Future_M4_OpenInterest",
-    "Future_M5_OpenInterest",
-    "Future_M6_OpenInterest",
-]
+from src.config.constants import (
+    DATE_COLUMN,
+    FUTURE_PRICE_COLUMNS,
+    OPEN_INTEREST_COLUMNS,
+    PRIMARY_FUTURE_COLUMN,
+    PRIMARY_OPEN_INTEREST_COLUMN,
+    SPOT_PRICE_COLUMN,
+)
 
 
 class FutureFeaturesError(Exception):
@@ -54,24 +41,26 @@ def _validate_input_dataframe(df: pd.DataFrame) -> pd.DataFrame:
     if df.empty:
         raise FutureFeaturesError("Input dataframe is empty.")
 
-    if "date" not in df.columns:
-        raise FutureFeaturesError("Input dataframe must contain a 'date' column.")
+    if DATE_COLUMN not in df.columns:
+        raise FutureFeaturesError(
+            f"Input dataframe must contain a '{DATE_COLUMN}' column."
+        )
 
     df = df.copy()
-    df["date"] = pd.to_datetime(df["date"], errors="coerce")
+    df[DATE_COLUMN] = pd.to_datetime(df[DATE_COLUMN], errors="coerce")
 
-    if df["date"].isna().any():
-        invalid_count = int(df["date"].isna().sum())
+    if df[DATE_COLUMN].isna().any():
+        invalid_count = int(df[DATE_COLUMN].isna().sum())
         raise FutureFeaturesError(
             f"Found {invalid_count} invalid date values while building futures features."
         )
 
-    if df["date"].duplicated().any():
+    if df[DATE_COLUMN].duplicated().any():
         raise FutureFeaturesError(
             "Input dataframe contains duplicated dates. Futures features require unique chronological rows."
         )
 
-    df = df.sort_values("date").reset_index(drop=True)
+    df = df.sort_values(DATE_COLUMN).reset_index(drop=True)
     return df
 
 
@@ -88,18 +77,18 @@ def _add_spot_vs_future_spreads(df: pd.DataFrame) -> pd.DataFrame:
     """
     df = df.copy()
 
-    if "Spot_Price_SPEL" not in df.columns:
+    if SPOT_PRICE_COLUMN not in df.columns:
         return df
 
-    future_price_columns = [col for col in PRICE_COLUMNS if col.startswith("Future_") and col in df.columns]
+    future_price_columns = [col for col in FUTURE_PRICE_COLUMNS if col in df.columns]
 
     for future_col in future_price_columns:
         maturity_label = future_col.replace("_Price", "").lower()
         abs_name = f"spread_spot_vs_{maturity_label}"
         rel_name = f"spread_spot_vs_{maturity_label}_rel"
 
-        df[abs_name] = df["Spot_Price_SPEL"] - df[future_col]
-        df[rel_name] = (df["Spot_Price_SPEL"] - df[future_col]) / df[future_col].replace(0, pd.NA)
+        df[abs_name] = df[SPOT_PRICE_COLUMN] - df[future_col]
+        df[rel_name] = (df[SPOT_PRICE_COLUMN] - df[future_col]) / df[future_col].replace(0, pd.NA)
 
     return df
 
@@ -184,11 +173,11 @@ def _add_front_month_premium_features(df: pd.DataFrame) -> pd.DataFrame:
     """
     df = df.copy()
 
-    if "Spot_Price_SPEL" in df.columns and "Future_M1_Price" in df.columns:
-        df["front_month_premium"] = df["Future_M1_Price"] - df["Spot_Price_SPEL"]
+    if SPOT_PRICE_COLUMN in df.columns and PRIMARY_FUTURE_COLUMN in df.columns:
+        df["front_month_premium"] = df[PRIMARY_FUTURE_COLUMN] - df[SPOT_PRICE_COLUMN]
         df["front_month_premium_rel"] = (
-            df["Future_M1_Price"] - df["Spot_Price_SPEL"]
-        ) / df["Spot_Price_SPEL"].replace(0, pd.NA)
+            df[PRIMARY_FUTURE_COLUMN] - df[SPOT_PRICE_COLUMN]
+        ) / df[SPOT_PRICE_COLUMN].replace(0, pd.NA)
 
     return df
 
@@ -204,7 +193,7 @@ def build_future_features(df: pd.DataFrame) -> pd.DataFrame:
     Parameters
     ----------
     df : pd.DataFrame
-        Input dataframe containing a `date` column and market variables.
+        Input dataframe containing the configured date column and market variables.
 
     Returns
     -------
@@ -223,12 +212,12 @@ def build_future_features(df: pd.DataFrame) -> pd.DataFrame:
 if __name__ == "__main__":
     example_df = pd.DataFrame(
         {
-            "date": pd.date_range("2024-01-01", periods=10, freq="D"),
-            "Spot_Price_SPEL": [50, 55, 52, 60, 70, 65, 62, 58, 61, 63],
-            "Future_M1_Price": [54, 56, 55, 59, 66, 64, 63, 60, 62, 64],
+            DATE_COLUMN: pd.date_range("2024-01-01", periods=10, freq="D"),
+            SPOT_PRICE_COLUMN: [50, 55, 52, 60, 70, 65, 62, 58, 61, 63],
+            PRIMARY_FUTURE_COLUMN: [54, 56, 55, 59, 66, 64, 63, 60, 62, 64],
             "Future_M2_Price": [55, 57, 56, 60, 67, 65, 64, 61, 63, 65],
             "Future_M3_Price": [56, 58, 57, 61, 68, 66, 65, 62, 64, 66],
-            "Future_M1_OpenInterest": [1000, 1010, 1020, 1030, 1015, 1005, 995, 980, 990, 1000],
+            PRIMARY_OPEN_INTEREST_COLUMN: [1000, 1010, 1020, 1030, 1015, 1005, 995, 980, 990, 1000],
             "Future_M2_OpenInterest": [900, 905, 910, 920, 915, 910, 900, 890, 895, 905],
             "Future_M3_OpenInterest": [400, 410, 420, 430, 425, 420, 418, 415, 417, 419],
         }

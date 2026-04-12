@@ -23,7 +23,9 @@ from __future__ import annotations
 
 import pandas as pd
 
+from src.config.constants import DEFAULT_QUANTILES, DEFAULT_REFERENCE_STRATEGY
 from src.config.paths import BACKTESTS_DIR, FIGURES_DIR, POLICIES_DIR, PROCESSED_DATA_DIR
+from src.utils.logger import get_logger
 from src.models.quantile_models import train_quantile_models, summarize_quantile_results
 from src.models.evaluate_model import build_quantile_diagnostics_report
 from src.decision.policy_inputs import prepare_policy_inputs
@@ -55,9 +57,37 @@ from src.visualization.plot_backtest_results import (
 TRAIN_FEATURES_FILE = PROCESSED_DATA_DIR / "train_features.csv"
 VALIDATION_FEATURES_FILE = PROCESSED_DATA_DIR / "validation_features.csv"
 
+POLICY_DECISIONS_OUTPUT_FILE = POLICIES_DIR / "validation_policy_decisions.csv"
+SPOT_ONLY_OUTPUT_FILE = BACKTESTS_DIR / "validation_spot_only.csv"
+STATIC_HEDGE_OUTPUT_FILE = BACKTESTS_DIR / "validation_static_hedge.csv"
+HEURISTIC_POLICY_OUTPUT_FILE = BACKTESTS_DIR / "validation_heuristic_policy.csv"
+
+QUANTILE_SUMMARY_OUTPUT_FILE = BACKTESTS_DIR / "quantile_model_summary.csv"
+QUANTILE_COVERAGE_OUTPUT_FILE = BACKTESTS_DIR / "quantile_coverage_summary.csv"
+QUANTILE_INTERVAL_OUTPUT_FILE = BACKTESTS_DIR / "quantile_interval_summary.csv"
+QUANTILE_TAIL_EXCEEDANCE_OUTPUT_FILE = BACKTESTS_DIR / "quantile_upper_tail_exceedance_summary.csv"
+
+STRATEGY_SUMMARY_OUTPUT_FILE = BACKTESTS_DIR / "strategy_summary_table.csv"
+STRATEGY_VS_REFERENCE_OUTPUT_FILE = BACKTESTS_DIR / "strategy_summary_vs_spot_only.csv"
+STRATEGY_DAILY_COMPARISON_OUTPUT_FILE = BACKTESTS_DIR / "strategy_daily_comparison.csv"
+
+RESILIENCE_SUMMARY_OUTPUT_FILE = BACKTESTS_DIR / "resilience_summary.csv"
+RESILIENCE_VS_REFERENCE_OUTPUT_FILE = BACKTESTS_DIR / "resilience_vs_spot_only.csv"
+EXTREME_DAYS_VS_REFERENCE_OUTPUT_FILE = BACKTESTS_DIR / "extreme_days_vs_spot_only.csv"
+
+QUANTILE_BAND_FIGURE_FILE = FIGURES_DIR / "quantile_band_q50_q90.png"
+TAIL_EXCEEDANCE_FIGURE_FILE = FIGURES_DIR / "upper_tail_exceedances_q90.png"
+DAILY_COSTS_FIGURE_FILE = FIGURES_DIR / "daily_costs_by_strategy.png"
+CUMULATIVE_COSTS_FIGURE_FILE = FIGURES_DIR / "cumulative_costs_by_strategy.png"
+DAILY_SAVINGS_FIGURE_FILE = FIGURES_DIR / "daily_savings_vs_spot_only.png"
+TOTAL_COST_BAR_FIGURE_FILE = FIGURES_DIR / "total_cost_bar_chart.png"
+ACTION_TIMELINE_FIGURE_FILE = FIGURES_DIR / "heuristic_policy_action_timeline.png"
+
 
 class BacktestPipelineError(Exception):
     """Raised when the backtest pipeline cannot run safely."""
+
+logger = get_logger(__name__)
 
 
 # =========================
@@ -66,9 +96,9 @@ class BacktestPipelineError(Exception):
 
 def _check_required_inputs() -> None:
     """Ensure required processed feature files exist before running."""
+    logger.info("Checking required input files for backtest pipeline...")
     required_files = [TRAIN_FEATURES_FILE, VALIDATION_FEATURES_FILE]
     missing_files = [str(file_path) for file_path in required_files if not file_path.exists()]
-
     if missing_files:
         raise BacktestPipelineError(
             "Missing required input files. Please generate feature files first:\n"
@@ -79,6 +109,7 @@ def _check_required_inputs() -> None:
 
 def _prepare_output_directories() -> None:
     """Create output directories if they do not already exist."""
+    logger.info("Preparing output directories for backtest artifacts...")
     BACKTESTS_DIR.mkdir(parents=True, exist_ok=True)
     POLICIES_DIR.mkdir(parents=True, exist_ok=True)
     FIGURES_DIR.mkdir(parents=True, exist_ok=True)
@@ -97,6 +128,7 @@ def run_backtest_pipeline() -> dict[str, pd.DataFrame]:
     dict[str, pd.DataFrame]
         Dictionary with key output tables for downstream use.
     """
+    logger.info("Starting end-to-end backtest pipeline...")
     _check_required_inputs()
     _prepare_output_directories()
 
@@ -105,6 +137,8 @@ def run_backtest_pipeline() -> dict[str, pd.DataFrame]:
     # =========================
     train = pd.read_csv(TRAIN_FEATURES_FILE)
     val = pd.read_csv(VALIDATION_FEATURES_FILE)
+    logger.info(f"Loaded train features: {train.shape}")
+    logger.info(f"Loaded validation features: {val.shape}")
 
     # =========================
     # 2. Train quantile models
@@ -112,21 +146,24 @@ def run_backtest_pipeline() -> dict[str, pd.DataFrame]:
     quantile_results, _, _ = train_quantile_models(
         train,
         val,
-        quantiles=[0.5, 0.9, 0.95],
+        quantiles=DEFAULT_QUANTILES,
     )
 
     quantile_summary = summarize_quantile_results(quantile_results)
     quantile_diagnostics = build_quantile_diagnostics_report(quantile_results)
+    logger.info("Quantile models trained and diagnostics computed.")
 
     # =========================
     # 3. Prepare policy inputs
     # =========================
     policy_inputs_df = prepare_policy_inputs(val, quantile_results)
+    logger.info(f"Prepared policy inputs: {policy_inputs_df.shape}")
 
     # =========================
     # 4. Apply heuristic policy
     # =========================
     decisions_df = apply_heuristic_policy(policy_inputs_df)
+    logger.info(f"Applied heuristic policy: {decisions_df.shape}")
 
     # =========================
     # 5. Align validation subset
@@ -162,59 +199,62 @@ def run_backtest_pipeline() -> dict[str, pd.DataFrame]:
     )
 
     simulation_dfs = [spot_only_df, static_hedge_df, policy_sim_df]
+    logger.info(f"Spot-only simulation shape: {spot_only_df.shape}")
+    logger.info(f"Static-hedge simulation shape: {static_hedge_df.shape}")
+    logger.info(f"Heuristic-policy simulation shape: {policy_sim_df.shape}")
 
     # =========================
     # 7. Comparison + resilience
     # =========================
     comparison_report = build_strategy_comparison_report(
         simulation_dfs,
-        reference_strategy_name="spot_only",
+        reference_strategy_name=DEFAULT_REFERENCE_STRATEGY,
     )
 
     resilience_report = build_resilience_report(
         simulation_dfs,
-        reference_strategy_name="spot_only",
+        reference_strategy_name=DEFAULT_REFERENCE_STRATEGY,
         extreme_cost_quantile=0.90,
     )
 
     # =========================
     # 8. Save tables
     # =========================
-    decisions_df.to_csv(POLICIES_DIR / "validation_policy_decisions.csv", index=False)
+    decisions_df.to_csv(POLICY_DECISIONS_OUTPUT_FILE, index=False)
 
-    spot_only_df.to_csv(BACKTESTS_DIR / "validation_spot_only.csv", index=False)
-    static_hedge_df.to_csv(BACKTESTS_DIR / "validation_static_hedge.csv", index=False)
-    policy_sim_df.to_csv(BACKTESTS_DIR / "validation_heuristic_policy.csv", index=False)
+    spot_only_df.to_csv(SPOT_ONLY_OUTPUT_FILE, index=False)
+    static_hedge_df.to_csv(STATIC_HEDGE_OUTPUT_FILE, index=False)
+    policy_sim_df.to_csv(HEURISTIC_POLICY_OUTPUT_FILE, index=False)
 
-    quantile_summary.to_csv(BACKTESTS_DIR / "quantile_model_summary.csv", index=False)
+    quantile_summary.to_csv(QUANTILE_SUMMARY_OUTPUT_FILE, index=False)
     quantile_diagnostics["coverage_summary"].to_csv(
-        BACKTESTS_DIR / "quantile_coverage_summary.csv", index=False
+        QUANTILE_COVERAGE_OUTPUT_FILE, index=False
     )
     quantile_diagnostics["interval_summary"].to_csv(
-        BACKTESTS_DIR / "quantile_interval_summary.csv", index=False
+        QUANTILE_INTERVAL_OUTPUT_FILE, index=False
     )
     quantile_diagnostics["upper_tail_exceedance_summary"].to_csv(
-        BACKTESTS_DIR / "quantile_upper_tail_exceedance_summary.csv", index=False
+        QUANTILE_TAIL_EXCEEDANCE_OUTPUT_FILE, index=False
     )
 
     comparison_report["summary_table"].to_csv(
-        BACKTESTS_DIR / "strategy_summary_table.csv", index=False
+        STRATEGY_SUMMARY_OUTPUT_FILE, index=False
     )
     comparison_report["summary_vs_reference"].to_csv(
-        BACKTESTS_DIR / "strategy_summary_vs_spot_only.csv", index=False
+        STRATEGY_VS_REFERENCE_OUTPUT_FILE, index=False
     )
     comparison_report["daily_comparison"].to_csv(
-        BACKTESTS_DIR / "strategy_daily_comparison.csv", index=False
+        STRATEGY_DAILY_COMPARISON_OUTPUT_FILE, index=False
     )
 
     resilience_report["resilience_summary"].to_csv(
-        BACKTESTS_DIR / "resilience_summary.csv", index=False
+        RESILIENCE_SUMMARY_OUTPUT_FILE, index=False
     )
     resilience_report["resilience_vs_reference"].to_csv(
-        BACKTESTS_DIR / "resilience_vs_spot_only.csv", index=False
+        RESILIENCE_VS_REFERENCE_OUTPUT_FILE, index=False
     )
     resilience_report["extreme_reference_days_comparison"].to_csv(
-        BACKTESTS_DIR / "extreme_days_vs_spot_only.csv", index=False
+        EXTREME_DAYS_VS_REFERENCE_OUTPUT_FILE, index=False
     )
 
     # =========================
@@ -225,7 +265,7 @@ def run_backtest_pipeline() -> dict[str, pd.DataFrame]:
         lower_quantile=0.5,
         upper_quantile=0.9,
         title="Prediction Band: Q50 to Q90",
-        save_path="quantile_band_q50_q90.png",
+        save_path=str(QUANTILE_BAND_FIGURE_FILE),
         show=False,
     )
 
@@ -233,45 +273,49 @@ def run_backtest_pipeline() -> dict[str, pd.DataFrame]:
         quantile_results,
         upper_quantile=0.9,
         title="Upper-Tail Forecast and Exceedances (Q90)",
-        save_path="upper_tail_exceedances_q90.png",
+        save_path=str(TAIL_EXCEEDANCE_FIGURE_FILE),
         show=False,
     )
 
     plot_daily_costs(
         simulation_dfs,
         title="Daily Procurement Costs by Strategy",
-        save_path="daily_costs_by_strategy.png",
+        save_path=str(DAILY_COSTS_FIGURE_FILE),
         show=False,
     )
 
     plot_cumulative_costs(
         simulation_dfs,
         title="Cumulative Procurement Costs by Strategy",
-        save_path="cumulative_costs_by_strategy.png",
+        save_path=str(CUMULATIVE_COSTS_FIGURE_FILE),
         show=False,
     )
 
     plot_daily_savings_vs_reference(
         simulation_dfs,
-        reference_strategy_name="spot_only",
+        reference_strategy_name=DEFAULT_REFERENCE_STRATEGY,
         title="Daily Savings vs Spot-Only Strategy",
-        save_path="daily_savings_vs_spot_only.png",
+        save_path=str(DAILY_SAVINGS_FIGURE_FILE),
         show=False,
     )
 
     plot_total_cost_bar_chart(
         simulation_dfs,
         title="Total Backtest Cost by Strategy",
-        save_path="total_cost_bar_chart.png",
+        save_path=str(TOTAL_COST_BAR_FIGURE_FILE),
         show=False,
     )
 
     plot_action_timeline(
         policy_sim_df,
         title="Heuristic Policy Actions Over Time",
-        save_path="heuristic_policy_action_timeline.png",
+        save_path=str(ACTION_TIMELINE_FIGURE_FILE),
         show=False,
     )
+
+    logger.info(f"Saved policy decisions to {POLICY_DECISIONS_OUTPUT_FILE}")
+    logger.info(f"Saved backtest tables to {BACKTESTS_DIR}")
+    logger.info(f"Saved figures to {FIGURES_DIR}")
 
     # =========================
     # 10. Return outputs
@@ -289,22 +333,16 @@ def run_backtest_pipeline() -> dict[str, pd.DataFrame]:
 if __name__ == "__main__":
     outputs = run_backtest_pipeline()
 
-    print("Backtest pipeline completed successfully.\n")
+    logger.info("Backtest pipeline completed successfully.")
+    logger.info(f"Saved policy outputs to: {POLICIES_DIR}")
+    logger.info(f"Saved backtest tables to: {BACKTESTS_DIR}")
+    logger.info(f"Saved figures to: {FIGURES_DIR}")
 
-    print("Saved policy outputs to:")
-    print(f"  - {POLICIES_DIR}")
+    logger.info("=== Strategy Summary ===")
+    logger.info(f"\n{outputs['strategy_summary']}")
 
-    print("\nSaved backtest tables to:")
-    print(f"  - {BACKTESTS_DIR}")
+    logger.info("=== Strategy Summary vs Reference ===")
+    logger.info(f"\n{outputs['strategy_summary_vs_reference']}")
 
-    print("\nSaved figures to:")
-    print(f"  - {FIGURES_DIR}")
-
-    print("\n=== Strategy Summary ===")
-    print(outputs["strategy_summary"])
-
-    print("\n=== Strategy Summary vs Spot Only ===")
-    print(outputs["strategy_summary_vs_reference"])
-
-    print("\n=== Resilience Summary ===")
-    print(outputs["resilience_summary"])
+    logger.info("=== Resilience Summary ===")
+    logger.info(f"\n{outputs['resilience_summary']}")

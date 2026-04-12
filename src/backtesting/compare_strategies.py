@@ -1,5 +1,3 @@
-
-
 """
 compare_strategies.py
 
@@ -16,17 +14,32 @@ from typing import Sequence
 
 import pandas as pd
 
+from src.config.constants import DATE_COLUMN, DEFAULT_REFERENCE_STRATEGY, STRATEGY_HEURISTIC_POLICY, STRATEGY_SPOT_ONLY, STRATEGY_STATIC_HEDGE
+
 
 class StrategyComparisonError(Exception):
     """Raised when simulated strategies cannot be compared safely."""
 
 
 REQUIRED_SIMULATION_COLUMNS = {
-    "date",
+    DATE_COLUMN,
     "strategy_name",
     "total_cost",
     "energy_volume_mwh",
 }
+
+
+def _validate_strategy_catalog() -> None:
+    """Validate the centralized strategy catalog used by this module."""
+    expected_strategies = {
+        STRATEGY_SPOT_ONLY,
+        STRATEGY_STATIC_HEDGE,
+        STRATEGY_HEURISTIC_POLICY,
+    }
+    if {STRATEGY_SPOT_ONLY, STRATEGY_STATIC_HEDGE, STRATEGY_HEURISTIC_POLICY} != expected_strategies:
+        raise StrategyComparisonError(
+            "Centralized strategy constants are inconsistent."
+        )
 
 
 # =========================
@@ -45,15 +58,15 @@ def _validate_single_simulation_df(simulation_df: pd.DataFrame) -> pd.DataFrame:
         )
 
     validated_df = simulation_df.copy()
-    validated_df["date"] = pd.to_datetime(validated_df["date"], errors="coerce")
+    validated_df[DATE_COLUMN] = pd.to_datetime(validated_df[DATE_COLUMN], errors="coerce")
 
-    if validated_df["date"].isna().any():
-        invalid_count = int(validated_df["date"].isna().sum())
+    if validated_df[DATE_COLUMN].isna().any():
+        invalid_count = int(validated_df[DATE_COLUMN].isna().sum())
         raise StrategyComparisonError(
             f"Found {invalid_count} invalid date values in a simulation dataframe."
         )
 
-    if validated_df["date"].duplicated().any():
+    if validated_df[DATE_COLUMN].duplicated().any():
         raise StrategyComparisonError(
             "A simulation dataframe contains duplicated dates."
         )
@@ -64,12 +77,13 @@ def _validate_single_simulation_df(simulation_df: pd.DataFrame) -> pd.DataFrame:
             "Each simulation dataframe must contain exactly one strategy_name."
         )
 
-    return validated_df.sort_values("date").reset_index(drop=True)
+    return validated_df.sort_values(DATE_COLUMN).reset_index(drop=True)
 
 
 
 def _validate_simulation_collection(simulation_dfs: Sequence[pd.DataFrame]) -> list[pd.DataFrame]:
     """Validate a collection of simulated strategy dataframes."""
+    _validate_strategy_catalog()
     if not simulation_dfs:
         raise StrategyComparisonError("simulation_dfs cannot be empty.")
 
@@ -81,9 +95,9 @@ def _validate_simulation_collection(simulation_dfs: Sequence[pd.DataFrame]) -> l
             f"Strategy names must be unique across simulations. Found: {strategy_names}"
         )
 
-    reference_dates = validated_dfs[0]["date"]
+    reference_dates = validated_dfs[0][DATE_COLUMN]
     for df in validated_dfs[1:]:
-        if not df["date"].equals(reference_dates):
+        if not df[DATE_COLUMN].equals(reference_dates):
             raise StrategyComparisonError(
                 "All simulation dataframes must share the same ordered date index."
             )
@@ -203,7 +217,7 @@ def compare_daily_costs(simulation_dfs: Sequence[pd.DataFrame]) -> pd.DataFrame:
     """
     validated_dfs = _validate_simulation_collection(simulation_dfs)
 
-    comparison_df = pd.DataFrame({"date": validated_dfs[0]["date"]})
+    comparison_df = pd.DataFrame({DATE_COLUMN: validated_dfs[0][DATE_COLUMN]})
 
     for df in validated_dfs:
         strategy_name = df["strategy_name"].iloc[0]
@@ -221,7 +235,7 @@ def compare_daily_costs(simulation_dfs: Sequence[pd.DataFrame]) -> pd.DataFrame:
 
 def build_strategy_comparison_report(
     simulation_dfs: Sequence[pd.DataFrame],
-    reference_strategy_name: str = "spot_only",
+    reference_strategy_name: str = DEFAULT_REFERENCE_STRATEGY,
 ) -> dict[str, pd.DataFrame]:
     """
     Build a compact comparison package for backtesting outputs.
@@ -252,8 +266,8 @@ if __name__ == "__main__":
 
     spot_only_df = pd.DataFrame(
         {
-            "date": dates,
-            "strategy_name": "spot_only",
+            DATE_COLUMN: dates,
+            "strategy_name": STRATEGY_SPOT_ONLY,
             "energy_volume_mwh": [10, 10, 10, 10],
             "total_cost": [800, 1200, 950, 700],
             "action_taken": ["buy_on_spot"] * 4,
@@ -262,8 +276,8 @@ if __name__ == "__main__":
 
     static_hedge_df = pd.DataFrame(
         {
-            "date": dates,
-            "strategy_name": "static_hedge",
+            DATE_COLUMN: dates,
+            "strategy_name": STRATEGY_STATIC_HEDGE,
             "energy_volume_mwh": [10, 10, 10, 10],
             "total_cost": [850, 900, 920, 880],
             "action_taken": ["static_m1_hedge"] * 4,
@@ -272,8 +286,8 @@ if __name__ == "__main__":
 
     heuristic_policy_df = pd.DataFrame(
         {
-            "date": dates,
-            "strategy_name": "heuristic_policy",
+            DATE_COLUMN: dates,
+            "strategy_name": STRATEGY_HEURISTIC_POLICY,
             "energy_volume_mwh": [10, 10, 10, 10],
             "total_cost": [780, 910, 890, 760],
             "action_taken": [
@@ -287,7 +301,7 @@ if __name__ == "__main__":
 
     report = build_strategy_comparison_report(
         [spot_only_df, static_hedge_df, heuristic_policy_df],
-        reference_strategy_name="spot_only",
+        reference_strategy_name=STRATEGY_SPOT_ONLY,
     )
 
     print(report["summary_table"])

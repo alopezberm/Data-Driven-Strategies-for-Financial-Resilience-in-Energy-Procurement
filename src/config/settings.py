@@ -20,6 +20,7 @@ from src.config.constants import (
     DEFAULT_FIGURE_WIDTH,
     DEFAULT_FORECAST_HORIZON,
     DEFAULT_HEDGE_RATIO_ON_BUY_FUTURE,
+    DEFAULT_LAG_STEPS,
     DEFAULT_QUANTILES,
     DEFAULT_REFERENCE_STRATEGY,
     DEFAULT_ROLLING_WINDOWS,
@@ -34,8 +35,14 @@ from src.config.constants import (
     MIN_REL_RISK_PREMIUM_TO_SHIFT,
     PROJECT_NAME,
     PROJECT_SHORT_NAME,
+    Q90_COLUMN,
+    Q95_COLUMN,
     TARGET_COLUMN,
 )
+from src.utils.logger import get_logger
+
+
+logger = get_logger(__name__)
 
 
 @dataclass
@@ -46,6 +53,7 @@ class TrainingSettings:
     forecast_horizon: int = DEFAULT_FORECAST_HORIZON
     quantiles: list[float] = field(default_factory=lambda: list(DEFAULT_QUANTILES))
     rolling_windows: list[int] = field(default_factory=lambda: list(DEFAULT_ROLLING_WINDOWS))
+    lag_steps: list[int] = field(default_factory=lambda: list(DEFAULT_LAG_STEPS))
     static_hedge_ratio: float = DEFAULT_STATIC_HEDGE_RATIO
 
 
@@ -71,6 +79,62 @@ class SimulationSettings:
     shift_penalty_per_mwh: float = DEFAULT_SHIFT_PENALTY_PER_MWH
     reference_strategy_name: str = DEFAULT_REFERENCE_STRATEGY
     extreme_cost_quantile: float = DEFAULT_EXTREME_COST_QUANTILE
+
+
+@dataclass
+class TailRiskSettings:
+    """Settings used for tail-risk analysis and extreme-event flagging."""
+
+    high_quantile_column: str = Q90_COLUMN
+    extreme_quantile_column: str = Q95_COLUMN
+    price_spike_threshold: float | None = None
+
+
+@dataclass
+class FeatureSelectionSettings:
+    """Settings used for feature-selection utilities."""
+
+    max_missing_share: float = 0.40
+    min_non_null_rows: int = 30
+    top_k_importance: int | None = None
+    random_state: int = 42
+    n_estimators: int = 200
+
+
+@dataclass
+class ExplainabilitySettings:
+    """Settings used for feature importance, scenario explanations, and SHAP."""
+
+    permutation_repeats: int = 10
+    shap_max_background_samples: int = 200
+    shap_max_explanation_rows: int = 200
+    top_k_features: int | None = 10
+    random_state: int = 42
+
+
+@dataclass
+class RLSettings:
+    """Settings used for lightweight RL environment and agent scaffolding."""
+
+    risk_aversion: float = 1.0
+    hedge_cost_penalty: float = 0.1
+    epsilon: float = 0.1
+    learning_rate: float = 0.1
+    discount_factor: float = 0.95
+    epsilon_decay: float = 0.995
+    epsilon_min: float = 0.01
+    state_rounding_digits: int = 1
+    heuristic_hedge_threshold: float = 5.0
+    heuristic_shift_threshold: float = 2.0
+
+
+@dataclass
+class PipelineSettings:
+    """Settings for pipeline execution behavior."""
+
+    save_outputs: bool = True
+    generate_figures: bool = True
+    verbose: bool = True
 
 
 @dataclass
@@ -100,6 +164,11 @@ class ProjectSettings:
     training: TrainingSettings = field(default_factory=TrainingSettings)
     policy: PolicySettings = field(default_factory=PolicySettings)
     simulation: SimulationSettings = field(default_factory=SimulationSettings)
+    tail_risk: TailRiskSettings = field(default_factory=TailRiskSettings)
+    feature_selection: FeatureSelectionSettings = field(default_factory=FeatureSelectionSettings)
+    explainability: ExplainabilitySettings = field(default_factory=ExplainabilitySettings)
+    rl: RLSettings = field(default_factory=RLSettings)
+    pipeline: PipelineSettings = field(default_factory=PipelineSettings)
     visualization: VisualizationSettings = field(default_factory=VisualizationSettings)
 
 
@@ -110,5 +179,5 @@ def get_default_settings() -> ProjectSettings:
 
 if __name__ == "__main__":
     settings = get_default_settings()
-    print("Project settings loaded successfully.")
-    print(settings)
+    logger.info("Project settings loaded successfully.")
+    logger.info(f"\n{settings}")

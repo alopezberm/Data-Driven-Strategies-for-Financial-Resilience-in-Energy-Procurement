@@ -14,6 +14,7 @@ from typing import Optional
 import pandas as pd
 
 from src.config.constants import (
+    ACTIONS,
     ALLOW_SHIFT_ON_WEEKENDS_RULE,
     TAIL_VS_CENTRAL_ABS_THRESHOLD,
     TAIL_VS_FUTURE_ABS_THRESHOLD,
@@ -23,6 +24,24 @@ from src.config.settings import PolicySettings, get_default_settings
 
 class ActionRuleError(Exception):
     """Raised when a rule cannot be evaluated."""
+
+
+ACTION_DO_NOTHING = ACTIONS[0]
+ACTION_BUY_M1_FUTURE = ACTIONS[1]
+ACTION_SHIFT_PRODUCTION = ACTIONS[2]
+
+
+def _validate_action_catalog() -> None:
+    """Validate the centralized action catalog used by this module."""
+    expected_actions = {
+        ACTION_DO_NOTHING,
+        ACTION_BUY_M1_FUTURE,
+        ACTION_SHIFT_PRODUCTION,
+    }
+    if len(ACTIONS) < 3 or set(ACTIONS[:3]) != expected_actions:
+        raise ActionRuleError(
+            "Centralized ACTIONS constant must contain the expected action labels in the first three positions."
+        )
 
 
 # =========================
@@ -104,6 +123,7 @@ def rule_shift_production(row: pd.Series, config: ActionRuleConfig) -> bool:
 
 def _get_config(config: Optional[ActionRuleConfig]) -> ActionRuleConfig:
     """Return the provided config or a default ActionRuleConfig instance."""
+    _validate_action_catalog()
     return get_default_action_rule_config() if config is None else config
 
 
@@ -125,12 +145,12 @@ def evaluate_action(row: pd.Series, config: Optional[ActionRuleConfig] = None) -
     config = _get_config(config)
 
     if rule_buy_m1_future(row, config):
-        return "buy_m1_future"
+        return ACTION_BUY_M1_FUTURE
 
     if rule_shift_production(row, config):
-        return "shift_production"
+        return ACTION_SHIFT_PRODUCTION
 
-    return "do_nothing"
+    return ACTION_DO_NOTHING
 
 
 
@@ -144,12 +164,12 @@ def evaluate_action_with_reason(
     config = _get_config(config)
 
     if rule_buy_m1_future(row, config):
-        return "buy_m1_future", "Tail risk exceeds futures price threshold"
+        return ACTION_BUY_M1_FUTURE, "Tail risk exceeds futures price threshold"
 
     if rule_shift_production(row, config):
-        return "shift_production", "Weekend + high tail risk vs central forecast"
+        return ACTION_SHIFT_PRODUCTION, "Weekend + high tail risk vs central forecast"
 
-    return "do_nothing", "No rule triggered"
+    return ACTION_DO_NOTHING, "No rule triggered"
 
 
 # =========================
@@ -169,12 +189,13 @@ def apply_action_rules(
         Original dataframe + recommended_action + decision_reason
     """
     validated_df = _validate_input(df)
+    config = _get_config(config)
 
     actions = []
     reasons = []
 
     for _, row in validated_df.iterrows():
-        action, reason = evaluate_action_with_reason(row, config)
+        action, reason = evaluate_action_with_reason(row, config=config)
         actions.append(action)
         reasons.append(reason)
 
@@ -219,5 +240,6 @@ if __name__ == "__main__":
     print(config)
 
     result = apply_action_rules(example_df, config=config)
+    assert set(result["recommended_action"]).issubset(set(ACTIONS))
     print(result)
     print(summarize_action_rules(result))

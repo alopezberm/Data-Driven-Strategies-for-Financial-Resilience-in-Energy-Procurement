@@ -16,51 +16,75 @@ from sklearn.ensemble import GradientBoostingRegressor
 from sklearn.metrics import mean_absolute_error, mean_squared_error, mean_pinball_loss
 
 from src.config.constants import (
+    DATE_COLUMN,
     DEFAULT_FORECAST_HORIZON,
     DEFAULT_QUANTILES,
+    PRIMARY_FUTURE_COLUMN,
+    PRIMARY_OPEN_INTEREST_COLUMN,
+    SPOT_PRICE_COLUMN,
     TARGET_COLUMN,
 )
 from src.config.settings import TrainingSettings, get_default_settings
 
 
-DEFAULT_QUANTILE_FEATURE_COLUMNS = [
-    "Spot_Price_SPEL_lag_1",
-    "Spot_Price_SPEL_lag_2",
-    "Spot_Price_SPEL_lag_3",
-    "Spot_Price_SPEL_lag_7",
-    "Spot_Price_SPEL_lag_14",
-    "Spot_Price_SPEL_lag_28",
-    "Spot_Price_SPEL_rolling_mean_7",
-    "Spot_Price_SPEL_rolling_std_7",
-    "Spot_Price_SPEL_rolling_mean_14",
-    "Spot_Price_SPEL_rolling_std_14",
-    "Future_M1_Price",
-    "Future_M2_Price",
-    "Future_M1_Price_lag_1",
-    "Future_M1_Price_lag_7",
-    "Future_M1_OpenInterest",
-    "Future_M1_OpenInterest_lag_1",
-    "Future_M1_OpenInterest_lag_7",
-    "spread_spot_vs_future_m1",
-    "spread_spot_vs_future_m1_rel",
-    "spread_future_m1_vs_future_m2",
-    "front_month_premium",
-    "front_month_premium_rel",
-    "day_of_week_sin",
-    "day_of_week_cos",
-    "month_sin",
-    "month_cos",
-    "day_of_year_sin",
-    "day_of_year_cos",
-    "is_weekend",
-    "Is_national_holiday",
-    "temperature_2m_mean",
-    "temperature_2m_max",
-    "temperature_2m_min",
-    "wind_speed_10m_max",
-    "shortwave_radiation_sum",
-    "precipitation_sum",
-]
+
+
+def get_default_quantile_feature_columns(
+    training_settings: TrainingSettings | None = None,
+) -> list[str]:
+    """Build the default quantile feature set from project settings."""
+    if training_settings is None:
+        training_settings = get_default_settings().training
+
+    lag_steps = list(training_settings.lag_steps)
+    rolling_windows = list(training_settings.rolling_windows)
+
+    target_lag_features = [f"{TARGET_COLUMN}_lag_{lag}" for lag in lag_steps]
+    target_rolling_features: list[str] = []
+    for window in rolling_windows:
+        target_rolling_features.extend(
+            [
+                f"{TARGET_COLUMN}_rolling_mean_{window}",
+                f"{TARGET_COLUMN}_rolling_std_{window}",
+            ]
+        )
+
+    market_features = [
+        PRIMARY_FUTURE_COLUMN,
+        "Future_M2_Price",
+        f"{PRIMARY_FUTURE_COLUMN}_lag_1",
+        f"{PRIMARY_FUTURE_COLUMN}_lag_7",
+        PRIMARY_OPEN_INTEREST_COLUMN,
+        f"{PRIMARY_OPEN_INTEREST_COLUMN}_lag_1",
+        f"{PRIMARY_OPEN_INTEREST_COLUMN}_lag_7",
+        "spread_spot_vs_future_m1",
+        "spread_spot_vs_future_m1_rel",
+        "spread_future_m1_vs_future_m2",
+        "front_month_premium",
+        "front_month_premium_rel",
+    ]
+
+    calendar_features = [
+        "day_of_week_sin",
+        "day_of_week_cos",
+        "month_sin",
+        "month_cos",
+        "day_of_year_sin",
+        "day_of_year_cos",
+        "is_weekend",
+        "Is_national_holiday",
+    ]
+
+    weather_features = [
+        "temperature_2m_mean",
+        "temperature_2m_max",
+        "temperature_2m_min",
+        "wind_speed_10m_max",
+        "shortwave_radiation_sum",
+        "precipitation_sum",
+    ]
+
+    return target_lag_features + target_rolling_features + market_features + calendar_features + weather_features
 
 
 class QuantileModelError(Exception):
@@ -98,7 +122,7 @@ class QuantileModelConfig:
     def resolved_feature_columns(self) -> list[str]:
         """Return configured feature columns or module defaults."""
         return (
-            list(DEFAULT_QUANTILE_FEATURE_COLUMNS)
+            get_default_quantile_feature_columns()
             if self.feature_columns is None
             else list(self.feature_columns)
         )
@@ -113,7 +137,7 @@ class QuantileModelConfig:
             target_column=training_settings.target_column,
             horizon=training_settings.forecast_horizon,
             quantiles=list(training_settings.quantiles),
-            feature_columns=list(DEFAULT_QUANTILE_FEATURE_COLUMNS),
+            feature_columns=get_default_quantile_feature_columns(training_settings),
             model_params=None,
         )
 
@@ -122,13 +146,16 @@ class QuantileModelConfig:
 # Validation helpers
 # =========================
 
+
 def _validate_input_dataframe(df: pd.DataFrame, target_column: str) -> pd.DataFrame:
     """Validate input dataframe and standardize its date column."""
     if df.empty:
         raise QuantileModelError("Input dataframe is empty.")
 
-    if "date" not in df.columns:
-        raise QuantileModelError("Input dataframe must contain a 'date' column.")
+    if DATE_COLUMN not in df.columns:
+        raise QuantileModelError(
+            f"Input dataframe must contain a '{DATE_COLUMN}' column."
+        )
 
     if target_column not in df.columns:
         raise QuantileModelError(
@@ -136,18 +163,18 @@ def _validate_input_dataframe(df: pd.DataFrame, target_column: str) -> pd.DataFr
         )
 
     df = df.copy()
-    df["date"] = pd.to_datetime(df["date"], errors="coerce")
+    df[DATE_COLUMN] = pd.to_datetime(df[DATE_COLUMN], errors="coerce")
 
-    if df["date"].isna().any():
-        invalid_count = int(df["date"].isna().sum())
+    if df[DATE_COLUMN].isna().any():
+        invalid_count = int(df[DATE_COLUMN].isna().sum())
         raise QuantileModelError(
             f"Found {invalid_count} invalid date values in input dataframe."
         )
 
-    if df["date"].duplicated().any():
+    if df[DATE_COLUMN].duplicated().any():
         raise QuantileModelError("Input dataframe contains duplicated dates.")
 
-    return df.sort_values("date").reset_index(drop=True)
+    return df.sort_values(DATE_COLUMN).reset_index(drop=True)
 
 
 
@@ -415,17 +442,18 @@ def combine_quantile_predictions(results: list[QuantileModelResults]) -> pd.Data
     return combined_df
 
 
+
 if __name__ == "__main__":
     date_index = pd.date_range("2024-01-01", periods=120, freq="D")
     base_series = np.linspace(50, 90, 120) + 5 * np.sin(np.arange(120) / 7)
 
     example_df = pd.DataFrame(
         {
-            "date": date_index,
-            "Spot_Price_SPEL": base_series,
-            "Future_M1_Price": base_series + 1.5,
+            DATE_COLUMN: date_index,
+            TARGET_COLUMN: base_series,
+            PRIMARY_FUTURE_COLUMN: base_series + 1.5,
             "Future_M2_Price": base_series + 2.5,
-            "Future_M1_OpenInterest": np.linspace(1000, 1200, 120),
+            PRIMARY_OPEN_INTEREST_COLUMN: np.linspace(1000, 1200, 120),
             "temperature_2m_mean": 15 + 10 * np.sin(np.arange(120) / 30),
             "temperature_2m_max": 20 + 10 * np.sin(np.arange(120) / 30),
             "temperature_2m_min": 10 + 10 * np.sin(np.arange(120) / 30),
@@ -436,32 +464,32 @@ if __name__ == "__main__":
     )
 
     # Lightweight feature examples for standalone smoke test
-    example_df["Spot_Price_SPEL_lag_1"] = example_df["Spot_Price_SPEL"].shift(1)
-    example_df["Spot_Price_SPEL_lag_2"] = example_df["Spot_Price_SPEL"].shift(2)
-    example_df["Spot_Price_SPEL_lag_3"] = example_df["Spot_Price_SPEL"].shift(3)
-    example_df["Spot_Price_SPEL_lag_7"] = example_df["Spot_Price_SPEL"].shift(7)
-    example_df["Spot_Price_SPEL_lag_14"] = example_df["Spot_Price_SPEL"].shift(14)
-    example_df["Spot_Price_SPEL_lag_28"] = example_df["Spot_Price_SPEL"].shift(28)
-    example_df["Future_M1_Price_lag_1"] = example_df["Future_M1_Price"].shift(1)
-    example_df["Future_M1_Price_lag_7"] = example_df["Future_M1_Price"].shift(7)
-    example_df["Future_M1_OpenInterest_lag_1"] = example_df["Future_M1_OpenInterest"].shift(1)
-    example_df["Future_M1_OpenInterest_lag_7"] = example_df["Future_M1_OpenInterest"].shift(7)
-    example_df["Spot_Price_SPEL_rolling_mean_7"] = example_df["Spot_Price_SPEL"].shift(1).rolling(7).mean()
-    example_df["Spot_Price_SPEL_rolling_std_7"] = example_df["Spot_Price_SPEL"].shift(1).rolling(7).std()
-    example_df["Spot_Price_SPEL_rolling_mean_14"] = example_df["Spot_Price_SPEL"].shift(1).rolling(14).mean()
-    example_df["Spot_Price_SPEL_rolling_std_14"] = example_df["Spot_Price_SPEL"].shift(1).rolling(14).std()
-    example_df["spread_spot_vs_future_m1"] = example_df["Spot_Price_SPEL"] - example_df["Future_M1_Price"]
-    example_df["spread_spot_vs_future_m1_rel"] = example_df["spread_spot_vs_future_m1"] / example_df["Future_M1_Price"]
-    example_df["spread_future_m1_vs_future_m2"] = example_df["Future_M1_Price"] - example_df["Future_M2_Price"]
-    example_df["front_month_premium"] = example_df["Future_M1_Price"] - example_df["Spot_Price_SPEL"]
-    example_df["front_month_premium_rel"] = example_df["front_month_premium"] / example_df["Spot_Price_SPEL"]
-    example_df["day_of_week_sin"] = np.sin(2 * np.pi * example_df["date"].dt.dayofweek / 7)
-    example_df["day_of_week_cos"] = np.cos(2 * np.pi * example_df["date"].dt.dayofweek / 7)
-    example_df["month_sin"] = np.sin(2 * np.pi * example_df["date"].dt.month / 12)
-    example_df["month_cos"] = np.cos(2 * np.pi * example_df["date"].dt.month / 12)
-    example_df["day_of_year_sin"] = np.sin(2 * np.pi * example_df["date"].dt.dayofyear / 365.25)
-    example_df["day_of_year_cos"] = np.cos(2 * np.pi * example_df["date"].dt.dayofyear / 365.25)
-    example_df["is_weekend"] = (example_df["date"].dt.dayofweek >= 5).astype(int)
+    example_df[f"{TARGET_COLUMN}_lag_1"] = example_df[TARGET_COLUMN].shift(1)
+    example_df[f"{TARGET_COLUMN}_lag_2"] = example_df[TARGET_COLUMN].shift(2)
+    example_df[f"{TARGET_COLUMN}_lag_3"] = example_df[TARGET_COLUMN].shift(3)
+    example_df[f"{TARGET_COLUMN}_lag_7"] = example_df[TARGET_COLUMN].shift(7)
+    example_df[f"{TARGET_COLUMN}_lag_14"] = example_df[TARGET_COLUMN].shift(14)
+    example_df[f"{TARGET_COLUMN}_lag_28"] = example_df[TARGET_COLUMN].shift(28)
+    example_df[f"{PRIMARY_FUTURE_COLUMN}_lag_1"] = example_df[PRIMARY_FUTURE_COLUMN].shift(1)
+    example_df[f"{PRIMARY_FUTURE_COLUMN}_lag_7"] = example_df[PRIMARY_FUTURE_COLUMN].shift(7)
+    example_df[f"{PRIMARY_OPEN_INTEREST_COLUMN}_lag_1"] = example_df[PRIMARY_OPEN_INTEREST_COLUMN].shift(1)
+    example_df[f"{PRIMARY_OPEN_INTEREST_COLUMN}_lag_7"] = example_df[PRIMARY_OPEN_INTEREST_COLUMN].shift(7)
+    example_df[f"{TARGET_COLUMN}_rolling_mean_7"] = example_df[TARGET_COLUMN].shift(1).rolling(7).mean()
+    example_df[f"{TARGET_COLUMN}_rolling_std_7"] = example_df[TARGET_COLUMN].shift(1).rolling(7).std()
+    example_df[f"{TARGET_COLUMN}_rolling_mean_14"] = example_df[TARGET_COLUMN].shift(1).rolling(14).mean()
+    example_df[f"{TARGET_COLUMN}_rolling_std_14"] = example_df[TARGET_COLUMN].shift(1).rolling(14).std()
+    example_df["spread_spot_vs_future_m1"] = example_df[SPOT_PRICE_COLUMN] - example_df[PRIMARY_FUTURE_COLUMN]
+    example_df["spread_spot_vs_future_m1_rel"] = example_df["spread_spot_vs_future_m1"] / example_df[PRIMARY_FUTURE_COLUMN]
+    example_df["spread_future_m1_vs_future_m2"] = example_df[PRIMARY_FUTURE_COLUMN] - example_df["Future_M2_Price"]
+    example_df["front_month_premium"] = example_df[PRIMARY_FUTURE_COLUMN] - example_df[SPOT_PRICE_COLUMN]
+    example_df["front_month_premium_rel"] = example_df["front_month_premium"] / example_df[SPOT_PRICE_COLUMN]
+    example_df["day_of_week_sin"] = np.sin(2 * np.pi * example_df[DATE_COLUMN].dt.dayofweek / 7)
+    example_df["day_of_week_cos"] = np.cos(2 * np.pi * example_df[DATE_COLUMN].dt.dayofweek / 7)
+    example_df["month_sin"] = np.sin(2 * np.pi * example_df[DATE_COLUMN].dt.month / 12)
+    example_df["month_cos"] = np.cos(2 * np.pi * example_df[DATE_COLUMN].dt.month / 12)
+    example_df["day_of_year_sin"] = np.sin(2 * np.pi * example_df[DATE_COLUMN].dt.dayofyear / 365.25)
+    example_df["day_of_year_cos"] = np.cos(2 * np.pi * example_df[DATE_COLUMN].dt.dayofyear / 365.25)
+    example_df["is_weekend"] = (example_df[DATE_COLUMN].dt.dayofweek >= 5).astype(int)
     example_df["Is_national_holiday"] = 0
 
     train_example = example_df.iloc[:90].copy()

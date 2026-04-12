@@ -1,5 +1,3 @@
-
-
 """
 baseline_models.py
 
@@ -11,34 +9,14 @@ more advanced uncertainty-aware models.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any
 
 import numpy as np
 import pandas as pd
 from sklearn.linear_model import LinearRegression
 from sklearn.metrics import mean_absolute_error, mean_squared_error
 
-
-DEFAULT_TARGET_COLUMN = "Spot_Price_SPEL"
-DEFAULT_HORIZON = 1
-DEFAULT_FEATURE_COLUMNS = [
-    "Spot_Price_SPEL_lag_1",
-    "Spot_Price_SPEL_lag_2",
-    "Spot_Price_SPEL_lag_3",
-    "Spot_Price_SPEL_lag_7",
-    "Spot_Price_SPEL_lag_14",
-    "Spot_Price_SPEL_lag_28",
-    "Future_M1_Price_lag_1",
-    "Future_M1_Price_lag_7",
-    "Future_M1_OpenInterest_lag_1",
-    "Future_M1_OpenInterest_lag_7",
-    "day_of_week_sin",
-    "day_of_week_cos",
-    "month_sin",
-    "month_cos",
-    "day_of_year_sin",
-    "day_of_year_cos",
-]
+from src.config.constants import DATE_COLUMN, DEFAULT_FORECAST_HORIZON, TARGET_COLUMN
+from src.config.settings import TrainingSettings, get_default_settings
 
 
 class BaselineModelError(Exception):
@@ -56,6 +34,32 @@ class BaselineResults:
     rmse: float
 
 
+def get_default_baseline_feature_columns(training_settings: TrainingSettings | None = None) -> list[str]:
+    """Build the default baseline feature set from project settings."""
+    if training_settings is None:
+        training_settings = get_default_settings().training
+
+    lag_steps = list(training_settings.lag_steps)
+
+    target_lag_features = [f"{TARGET_COLUMN}_lag_{lag}" for lag in lag_steps]
+    market_lag_features = [
+        "Future_M1_Price_lag_1",
+        "Future_M1_Price_lag_7",
+        "Future_M1_OpenInterest_lag_1",
+        "Future_M1_OpenInterest_lag_7",
+    ]
+    cyclical_features = [
+        "day_of_week_sin",
+        "day_of_week_cos",
+        "month_sin",
+        "month_cos",
+        "day_of_year_sin",
+        "day_of_year_cos",
+    ]
+
+    return target_lag_features + market_lag_features + cyclical_features
+
+
 # =========================
 # Validation helpers
 # =========================
@@ -65,8 +69,10 @@ def _validate_input_dataframe(df: pd.DataFrame, target_column: str) -> pd.DataFr
     if df.empty:
         raise BaselineModelError("Input dataframe is empty.")
 
-    if "date" not in df.columns:
-        raise BaselineModelError("Input dataframe must contain a 'date' column.")
+    if DATE_COLUMN not in df.columns:
+        raise BaselineModelError(
+            f"Input dataframe must contain a '{DATE_COLUMN}' column."
+        )
 
     if target_column not in df.columns:
         raise BaselineModelError(
@@ -74,18 +80,18 @@ def _validate_input_dataframe(df: pd.DataFrame, target_column: str) -> pd.DataFr
         )
 
     df = df.copy()
-    df["date"] = pd.to_datetime(df["date"], errors="coerce")
+    df[DATE_COLUMN] = pd.to_datetime(df[DATE_COLUMN], errors="coerce")
 
-    if df["date"].isna().any():
-        invalid_count = int(df["date"].isna().sum())
+    if df[DATE_COLUMN].isna().any():
+        invalid_count = int(df[DATE_COLUMN].isna().sum())
         raise BaselineModelError(
             f"Found {invalid_count} invalid date values in input dataframe."
         )
 
-    if df["date"].duplicated().any():
+    if df[DATE_COLUMN].duplicated().any():
         raise BaselineModelError("Input dataframe contains duplicated dates.")
 
-    return df.sort_values("date").reset_index(drop=True)
+    return df.sort_values(DATE_COLUMN).reset_index(drop=True)
 
 
 # =========================
@@ -94,8 +100,8 @@ def _validate_input_dataframe(df: pd.DataFrame, target_column: str) -> pd.DataFr
 
 def prepare_next_day_target(
     df: pd.DataFrame,
-    target_column: str = DEFAULT_TARGET_COLUMN,
-    horizon: int = DEFAULT_HORIZON,
+    target_column: str = TARGET_COLUMN,
+    horizon: int = DEFAULT_FORECAST_HORIZON,
 ) -> pd.DataFrame:
     """
     Create a forward target for supervised next-step forecasting.
@@ -144,8 +150,8 @@ def _format_results(model_name: str, y_true: pd.Series, y_pred: pd.Series) -> Ba
 
 def naive_last_value_baseline(
     df: pd.DataFrame,
-    target_column: str = DEFAULT_TARGET_COLUMN,
-    horizon: int = DEFAULT_HORIZON,
+    target_column: str = TARGET_COLUMN,
+    horizon: int = DEFAULT_FORECAST_HORIZON,
 ) -> BaselineResults:
     """
     Predict tomorrow's target as today's observed target.
@@ -155,7 +161,7 @@ def naive_last_value_baseline(
     prepared_df = prepare_next_day_target(df, target_column=target_column, horizon=horizon)
     target_name = f"target_{target_column}_t_plus_{horizon}"
 
-    eval_df = prepared_df[["date", target_column, target_name]].dropna().copy()
+    eval_df = prepared_df[[DATE_COLUMN, target_column, target_name]].dropna().copy()
     eval_df["prediction"] = eval_df[target_column]
 
     return _format_results(
@@ -171,8 +177,8 @@ def naive_last_value_baseline(
 
 def seasonal_naive_baseline(
     df: pd.DataFrame,
-    target_column: str = DEFAULT_TARGET_COLUMN,
-    horizon: int = DEFAULT_HORIZON,
+    target_column: str = TARGET_COLUMN,
+    horizon: int = DEFAULT_FORECAST_HORIZON,
     seasonal_lag: int = 7,
 ) -> BaselineResults:
     """
@@ -186,7 +192,7 @@ def seasonal_naive_baseline(
     prepared_df = prepare_next_day_target(df, target_column=target_column, horizon=horizon)
     target_name = f"target_{target_column}_t_plus_{horizon}"
 
-    eval_df = prepared_df[["date", target_column, target_name]].copy()
+    eval_df = prepared_df[[DATE_COLUMN, target_column, target_name]].copy()
     eval_df["prediction"] = eval_df[target_column].shift(seasonal_lag)
     eval_df = eval_df.dropna().copy()
 
@@ -203,8 +209,8 @@ def seasonal_naive_baseline(
 
 def rolling_mean_baseline(
     df: pd.DataFrame,
-    target_column: str = DEFAULT_TARGET_COLUMN,
-    horizon: int = DEFAULT_HORIZON,
+    target_column: str = TARGET_COLUMN,
+    horizon: int = DEFAULT_FORECAST_HORIZON,
     window: int = 7,
 ) -> BaselineResults:
     """
@@ -218,7 +224,7 @@ def rolling_mean_baseline(
     prepared_df = prepare_next_day_target(df, target_column=target_column, horizon=horizon)
     target_name = f"target_{target_column}_t_plus_{horizon}"
 
-    eval_df = prepared_df[["date", target_column, target_name]].copy()
+    eval_df = prepared_df[[DATE_COLUMN, target_column, target_name]].copy()
     eval_df["prediction"] = eval_df[target_column].shift(1).rolling(window=window).mean()
     eval_df = eval_df.dropna().copy()
 
@@ -236,8 +242,8 @@ def rolling_mean_baseline(
 def linear_regression_baseline(
     train_df: pd.DataFrame,
     test_df: pd.DataFrame,
-    target_column: str = DEFAULT_TARGET_COLUMN,
-    horizon: int = DEFAULT_HORIZON,
+    target_column: str = TARGET_COLUMN,
+    horizon: int = DEFAULT_FORECAST_HORIZON,
     feature_columns: list[str] | None = None,
 ) -> tuple[BaselineResults, LinearRegression]:
     """
@@ -261,7 +267,7 @@ def linear_regression_baseline(
     tuple[BaselineResults, LinearRegression]
         Baseline results and the fitted sklearn model.
     """
-    feature_columns = DEFAULT_FEATURE_COLUMNS if feature_columns is None else feature_columns
+    feature_columns = get_default_baseline_feature_columns() if feature_columns is None else feature_columns
 
     prepared_train = prepare_next_day_target(train_df, target_column=target_column, horizon=horizon)
     prepared_test = prepare_next_day_target(test_df, target_column=target_column, horizon=horizon)
@@ -321,26 +327,29 @@ def summarize_baseline_results(results: list[BaselineResults]) -> pd.DataFrame:
 
 
 if __name__ == "__main__":
+    example_dates = pd.date_range("2024-01-01", periods=60, freq="D")
+    example_target = np.linspace(50, 80, 60)
+
     example_df = pd.DataFrame(
         {
-            "date": pd.date_range("2024-01-01", periods=60, freq="D"),
-            "Spot_Price_SPEL": np.linspace(50, 80, 60),
-            "Spot_Price_SPEL_lag_1": pd.Series(np.linspace(50, 80, 60)).shift(1),
-            "Spot_Price_SPEL_lag_2": pd.Series(np.linspace(50, 80, 60)).shift(2),
-            "Spot_Price_SPEL_lag_3": pd.Series(np.linspace(50, 80, 60)).shift(3),
-            "Spot_Price_SPEL_lag_7": pd.Series(np.linspace(50, 80, 60)).shift(7),
-            "Spot_Price_SPEL_lag_14": pd.Series(np.linspace(50, 80, 60)).shift(14),
-            "Spot_Price_SPEL_lag_28": pd.Series(np.linspace(50, 80, 60)).shift(28),
+            DATE_COLUMN: example_dates,
+            TARGET_COLUMN: example_target,
+            f"{TARGET_COLUMN}_lag_1": pd.Series(example_target).shift(1),
+            f"{TARGET_COLUMN}_lag_2": pd.Series(example_target).shift(2),
+            f"{TARGET_COLUMN}_lag_3": pd.Series(example_target).shift(3),
+            f"{TARGET_COLUMN}_lag_7": pd.Series(example_target).shift(7),
+            f"{TARGET_COLUMN}_lag_14": pd.Series(example_target).shift(14),
+            f"{TARGET_COLUMN}_lag_28": pd.Series(example_target).shift(28),
             "Future_M1_Price_lag_1": pd.Series(np.linspace(51, 81, 60)).shift(1),
             "Future_M1_Price_lag_7": pd.Series(np.linspace(51, 81, 60)).shift(7),
             "Future_M1_OpenInterest_lag_1": pd.Series(np.linspace(1000, 1100, 60)).shift(1),
             "Future_M1_OpenInterest_lag_7": pd.Series(np.linspace(1000, 1100, 60)).shift(7),
-            "day_of_week_sin": np.sin(2 * np.pi * (pd.date_range("2024-01-01", periods=60, freq="D").dayofweek) / 7),
-            "day_of_week_cos": np.cos(2 * np.pi * (pd.date_range("2024-01-01", periods=60, freq="D").dayofweek) / 7),
-            "month_sin": np.sin(2 * np.pi * (pd.date_range("2024-01-01", periods=60, freq="D").month) / 12),
-            "month_cos": np.cos(2 * np.pi * (pd.date_range("2024-01-01", periods=60, freq="D").month) / 12),
-            "day_of_year_sin": np.sin(2 * np.pi * (pd.date_range("2024-01-01", periods=60, freq="D").dayofyear) / 365.25),
-            "day_of_year_cos": np.cos(2 * np.pi * (pd.date_range("2024-01-01", periods=60, freq="D").dayofyear) / 365.25),
+            "day_of_week_sin": np.sin(2 * np.pi * (example_dates.dayofweek) / 7),
+            "day_of_week_cos": np.cos(2 * np.pi * (example_dates.dayofweek) / 7),
+            "month_sin": np.sin(2 * np.pi * (example_dates.month) / 12),
+            "month_cos": np.cos(2 * np.pi * (example_dates.month) / 12),
+            "day_of_year_sin": np.sin(2 * np.pi * (example_dates.dayofyear) / 365.25),
+            "day_of_year_cos": np.cos(2 * np.pi * (example_dates.dayofyear) / 365.25),
         }
     )
 

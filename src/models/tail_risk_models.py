@@ -1,5 +1,3 @@
-
-
 """
 tail_risk_models.py
 
@@ -14,7 +12,14 @@ from dataclasses import dataclass
 
 import pandas as pd
 
-from src.config.constants import TARGET_COLUMN, DEFAULT_FORECAST_HORIZON
+from src.config.constants import (
+    DEFAULT_FORECAST_HORIZON,
+    Q50_COLUMN,
+    Q90_COLUMN,
+    Q95_COLUMN,
+    TARGET_COLUMN,
+)
+from src.config.settings import TailRiskSettings, get_default_settings
 
 
 class TailRiskModelError(Exception):
@@ -35,6 +40,43 @@ class TailRiskConfig:
     high_quantile: float = 0.9
     extreme_quantile: float = 0.95
     price_spike_threshold: float | None = None  # optional absolute threshold
+
+    @classmethod
+    def from_settings(
+        cls,
+        settings: TailRiskSettings,
+        target_column: str = TARGET_COLUMN,
+        horizon: int = DEFAULT_FORECAST_HORIZON,
+    ) -> "TailRiskConfig":
+        """Build a tail-risk config from centralized project settings."""
+        high_quantile = float(str(settings.high_quantile_column).replace("q_", ""))
+        extreme_quantile = float(str(settings.extreme_quantile_column).replace("q_", ""))
+        return cls(
+            target_column=target_column,
+            horizon=horizon,
+            high_quantile=high_quantile,
+            extreme_quantile=extreme_quantile,
+            price_spike_threshold=settings.price_spike_threshold,
+        )
+
+
+def get_default_tail_risk_settings() -> TailRiskSettings:
+    """Return default tail-risk settings from the project configuration."""
+    return get_default_settings().tail_risk
+
+
+
+def _get_config(config: TailRiskConfig | None) -> TailRiskConfig:
+    """Resolve an explicit config or build one from project settings."""
+    if config is not None:
+        return config
+    return TailRiskConfig.from_settings(get_default_tail_risk_settings())
+
+
+
+def _format_quantile_column(quantile: float) -> str:
+    """Format a quantile value into the project's quantile-column naming convention."""
+    return f"q_{quantile:g}"
 
 
 # =========================
@@ -58,18 +100,18 @@ def compute_tail_risk_features(
     Compute tail-risk features based on quantile predictions.
 
     Expected columns (example):
-    - q_0.9
-    - q_0.95
+    - configured high-quantile column
+    - configured extreme-quantile column
 
     Returns dataframe with:
     - tail_spread
     - extreme_spread
     - tail_ratio
     """
-    config = TailRiskConfig() if config is None else config
+    config = _get_config(config)
 
-    q_high_col = f"q_{config.high_quantile}"
-    q_extreme_col = f"q_{config.extreme_quantile}"
+    q_high_col = _format_quantile_column(config.high_quantile)
+    q_extreme_col = _format_quantile_column(config.extreme_quantile)
 
     validate_quantile_inputs(df, [q_high_col, q_extreme_col])
 
@@ -79,7 +121,7 @@ def compute_tail_risk_features(
     result_df["tail_spread"] = result_df[q_extreme_col] - result_df[q_high_col]
 
     # Spread between high quantile and median-like proxy (if exists)
-    median_col = "q_0.5" if "q_0.5" in result_df.columns else None
+    median_col = Q50_COLUMN if Q50_COLUMN in result_df.columns else None
     if median_col:
         result_df["extreme_spread"] = result_df[q_extreme_col] - result_df[median_col]
         result_df["tail_ratio"] = result_df[q_extreme_col] / result_df[median_col]
@@ -108,10 +150,10 @@ def compute_tail_risk_metrics(
     - pct_high_risk_days
     - pct_extreme_risk_days
     """
-    config = TailRiskConfig() if config is None else config
+    config = _get_config(config)
 
-    q_high_col = f"q_{config.high_quantile}"
-    q_extreme_col = f"q_{config.extreme_quantile}"
+    q_high_col = _format_quantile_column(config.high_quantile)
+    q_extreme_col = _format_quantile_column(config.extreme_quantile)
 
     validate_quantile_inputs(df, [q_high_col, q_extreme_col])
 
@@ -148,10 +190,10 @@ def flag_extreme_events(
     - is_high_risk
     - is_extreme_risk
     """
-    config = TailRiskConfig() if config is None else config
+    config = _get_config(config)
 
-    q_high_col = f"q_{config.high_quantile}"
-    q_extreme_col = f"q_{config.extreme_quantile}"
+    q_high_col = _format_quantile_column(config.high_quantile)
+    q_extreme_col = _format_quantile_column(config.extreme_quantile)
 
     validate_quantile_inputs(df, [q_high_col, q_extreme_col])
 
@@ -189,7 +231,7 @@ def build_tail_risk_dataset(
     - enriched dataframe
     - metrics dictionary
     """
-    config = TailRiskConfig() if config is None else config
+    config = _get_config(config)
 
     df_features = compute_tail_risk_features(df, config=config)
     df_flagged = flag_extreme_events(df_features, config=config)
@@ -206,9 +248,9 @@ def build_tail_risk_dataset(
 if __name__ == "__main__":
     example_df = pd.DataFrame(
         {
-            "q_0.5": [50, 55, 60, 58, 62],
-            "q_0.9": [60, 65, 70, 68, 75],
-            "q_0.95": [65, 70, 78, 72, 82],
+            Q50_COLUMN: [50, 55, 60, 58, 62],
+            Q90_COLUMN: [60, 65, 70, 68, 75],
+            Q95_COLUMN: [65, 70, 78, 72, 82],
         }
     )
 
