@@ -261,7 +261,8 @@ group17_tailrisk_solutions/
 │   ├── pipeline/
 │   │   ├── __init__.py
 │   │   ├── run_backtest.py
-│   │   └── build_modeling_dataset.py
+│   │   ├── build_modeling_dataset.py
+│   │   └── build_feature_dictionary.py
 │   │
 │   └── utils/
 │       ├── __init__.py
