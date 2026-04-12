@@ -1,5 +1,3 @@
-
-
 """
 train_rl_agent.py
 
@@ -67,7 +65,9 @@ class RLTrainingArtifacts:
     """Container for RL training outputs."""
 
     agent: QLearningAgent
+    raw_episode_history: list[dict[str, Any]]
     episode_rewards: list[float]
+    episode_details_df: pd.DataFrame
     rewards_history_df: pd.DataFrame
     rewards_summary_df: pd.DataFrame
     q_table_path: Path | None = None
@@ -166,13 +166,13 @@ def train_q_learning_agent(
     agent = QLearningAgent(config=q_agent_config)
 
     try:
-        episode_rewards = agent.train(
+        raw_episode_history = agent.train(
             env=environment,
             episodes=resolved_training_config.episodes,
         )
         episode_rewards = [
             float(item["total_reward"]) if isinstance(item, dict) else float(item)
-            for item in episode_rewards
+            for item in raw_episode_history
         ]
 
     except RLAgentError as exc:
@@ -183,9 +183,30 @@ def train_q_learning_agent(
     if not episode_rewards:
         raise RLTrainingError("RL training produced an empty reward history.")
 
+    if raw_episode_history and isinstance(raw_episode_history[0], dict):
+        episode_details_df = pd.DataFrame(raw_episode_history)
+    else:
+        episode_details_df = pd.DataFrame(
+            {
+                "episode": list(range(1, len(episode_rewards) + 1)),
+                "total_reward": episode_rewards,
+            }
+        )
+
     try:
         rewards_history_df = build_episode_rewards_dataframe(episode_rewards)
         rewards_summary_df = summarize_episode_rewards(episode_rewards)
+
+        if "n_steps" in episode_details_df.columns:
+            rewards_summary_df["steps_mean"] = float(
+                pd.to_numeric(episode_details_df["n_steps"], errors="coerce").mean()
+            )
+            rewards_summary_df["steps_last"] = float(
+                pd.to_numeric(episode_details_df["n_steps"], errors="coerce").iloc[-1]
+            )
+
+        rewards_summary_df["q_table_states"] = float(len(agent.q_table))
+        rewards_summary_df["best_reward"] = float(max(episode_rewards))
     except RLUtilsError as exc:
         raise RLTrainingError(f"Failed to build RL diagnostics: {exc}") from exc
 
@@ -203,11 +224,20 @@ def train_q_learning_agent(
         logger.info("RL training completed successfully.")
         logger.info(f"Q-table states learned: {len(agent.q_table)}")
         logger.info(f"Last episode reward: {episode_rewards[-1]:.4f}")
+        logger.info(f"Best episode reward: {max(episode_rewards):.4f}")
+        if "n_steps" in episode_details_df.columns:
+            logger.info(
+                "Episode steps summary | mean=%.2f | last=%.2f",
+                pd.to_numeric(episode_details_df["n_steps"], errors="coerce").mean(),
+                pd.to_numeric(episode_details_df["n_steps"], errors="coerce").iloc[-1],
+            )
         logger.info(f"Reward summary:\n{rewards_summary_df}")
 
     return RLTrainingArtifacts(
         agent=agent,
+        raw_episode_history=raw_episode_history,
         episode_rewards=episode_rewards,
+        episode_details_df=episode_details_df,
         rewards_history_df=rewards_history_df,
         rewards_summary_df=rewards_summary_df,
         q_table_path=q_table_path,
@@ -237,3 +267,4 @@ if __name__ == "__main__":
     artifacts = train_q_learning_agent(example_df)
     logger.info(f"Trained Q-table size: {len(artifacts.agent.q_table)}")
     logger.info(f"Rewards history head:\n{artifacts.rewards_history_df.head()}")
+    logger.info(f"Episode details head:\n{artifacts.episode_details_df.head()}")
