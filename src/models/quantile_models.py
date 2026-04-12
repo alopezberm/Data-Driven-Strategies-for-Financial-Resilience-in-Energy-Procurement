@@ -67,6 +67,7 @@ class QuantileModelError(Exception):
     """Raised when quantile model training, prediction, or evaluation fails."""
 
 
+
 @dataclass
 class QuantileModelResults:
     """Container for a single quantile model's predictions and metrics."""
@@ -78,6 +79,43 @@ class QuantileModelResults:
     pinball_loss: float
     mae: float
     rmse: float
+
+
+@dataclass
+class QuantileModelConfig:
+    """Configuration for quantile model training."""
+
+    target_column: str = TARGET_COLUMN
+    horizon: int = DEFAULT_FORECAST_HORIZON
+    quantiles: list[float] | None = None
+    feature_columns: list[str] | None = None
+    model_params: dict | None = None
+
+    def resolved_quantiles(self) -> list[float]:
+        """Return configured quantiles or project defaults."""
+        return list(DEFAULT_QUANTILES) if self.quantiles is None else list(self.quantiles)
+
+    def resolved_feature_columns(self) -> list[str]:
+        """Return configured feature columns or module defaults."""
+        return (
+            list(DEFAULT_QUANTILE_FEATURE_COLUMNS)
+            if self.feature_columns is None
+            else list(self.feature_columns)
+        )
+
+    @classmethod
+    def from_training_settings(
+        cls,
+        training_settings: TrainingSettings,
+    ) -> "QuantileModelConfig":
+        """Build quantile-model configuration from centralized training settings."""
+        return cls(
+            target_column=training_settings.target_column,
+            horizon=training_settings.forecast_horizon,
+            quantiles=list(training_settings.quantiles),
+            feature_columns=list(DEFAULT_QUANTILE_FEATURE_COLUMNS),
+            model_params=None,
+        )
 
 
 # =========================
@@ -113,6 +151,7 @@ def _validate_input_dataframe(df: pd.DataFrame, target_column: str) -> pd.DataFr
 
 
 
+
 def _validate_quantiles(quantiles: list[float]) -> None:
     """Validate quantile values."""
     if not quantiles:
@@ -123,6 +162,12 @@ def _validate_quantiles(quantiles: list[float]) -> None:
             raise QuantileModelError("All quantiles must be numeric.")
         if not 0 < float(quantile) < 1:
             raise QuantileModelError("All quantiles must be strictly between 0 and 1.")
+
+
+def get_default_quantile_model_config() -> QuantileModelConfig:
+    """Build the default quantile-model configuration from project settings."""
+    settings = get_default_settings()
+    return QuantileModelConfig.from_training_settings(settings.training)
 
 
 # =========================
@@ -268,6 +313,7 @@ def train_single_quantile_model(
 
 
 
+
 def train_quantile_models(
     train_df: pd.DataFrame,
     test_df: pd.DataFrame,
@@ -288,69 +334,6 @@ def train_quantile_models(
     default_config = get_default_quantile_model_config()
     quantiles = default_config.resolved_quantiles() if quantiles is None else quantiles
     _validate_quantiles(quantiles)
-# =========================
-# Validation helpers
-# =========================
-
-
-@dataclass
-class QuantileModelConfig:
-    """Configuration for quantile model training."""
-
-    target_column: str = TARGET_COLUMN
-    horizon: int = DEFAULT_FORECAST_HORIZON
-    quantiles: list[float] | None = None
-    feature_columns: list[str] | None = None
-    model_params: dict | None = None
-
-    def resolved_quantiles(self) -> list[float]:
-        """Return configured quantiles or project defaults."""
-        return list(DEFAULT_QUANTILES) if self.quantiles is None else list(self.quantiles)
-
-    def resolved_feature_columns(self) -> list[str]:
-        """Return configured feature columns or module defaults."""
-        return list(DEFAULT_QUANTILE_FEATURE_COLUMNS) if self.feature_columns is None else list(self.feature_columns)
-
-    @classmethod
-    def from_training_settings(cls, training_settings: TrainingSettings) -> "QuantileModelConfig":
-        """Build quantile-model configuration from centralized training settings."""
-        return cls(
-            target_column=training_settings.target_column,
-            horizon=training_settings.forecast_horizon,
-            quantiles=list(training_settings.quantiles),
-            feature_columns=list(DEFAULT_QUANTILE_FEATURE_COLUMNS),
-            model_params=None,
-        )
-
-# =========================
-# Target preparation
-# =========================
-
-
-def get_default_quantile_model_config() -> QuantileModelConfig:
-    """Build the default quantile-model configuration from project settings."""
-    settings = get_default_settings()
-    return QuantileModelConfig.from_training_settings(settings.training)
-
-def train_quantile_models_from_config(
-    train_df: pd.DataFrame,
-    test_df: pd.DataFrame,
-    config: QuantileModelConfig | None = None,
-) -> tuple[list[QuantileModelResults], dict[float, GradientBoostingRegressor], list[str]]:
-    """
-    Train quantile models using a QuantileModelConfig object.
-    """
-    config = get_default_quantile_model_config() if config is None else config
-
-    return train_quantile_models(
-        train_df=train_df,
-        test_df=test_df,
-        quantiles=config.resolved_quantiles(),
-        target_column=config.target_column,
-        horizon=config.horizon,
-        feature_columns=config.resolved_feature_columns(),
-        model_params=config.model_params,
-    )
 
     results_list: list[QuantileModelResults] = []
     models: dict[float, GradientBoostingRegressor] = {}
@@ -371,6 +354,27 @@ def train_quantile_models_from_config(
         used_features_reference = used_features
 
     return results_list, models, (used_features_reference or [])
+
+
+def train_quantile_models_from_config(
+    train_df: pd.DataFrame,
+    test_df: pd.DataFrame,
+    config: QuantileModelConfig | None = None,
+) -> tuple[list[QuantileModelResults], dict[float, GradientBoostingRegressor], list[str]]:
+    """
+    Train quantile models using a QuantileModelConfig object.
+    """
+    config = get_default_quantile_model_config() if config is None else config
+
+    return train_quantile_models(
+        train_df=train_df,
+        test_df=test_df,
+        quantiles=config.resolved_quantiles(),
+        target_column=config.target_column,
+        horizon=config.horizon,
+        feature_columns=config.resolved_feature_columns(),
+        model_params=config.model_params,
+    )
 
 
 
