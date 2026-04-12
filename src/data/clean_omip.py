@@ -98,6 +98,29 @@ def _validate_clean_dataframe(df: pd.DataFrame) -> None:
 
 
 # =========================
+# Dataframe-level cleaning function
+# =========================
+
+def clean_omip_dataframe(df: pd.DataFrame) -> pd.DataFrame:
+    """
+    Clean an already-loaded OMIP dataframe.
+
+    This dataframe-level API is useful for tests and for callers that already
+    have the raw OMIP data in memory.
+    """
+    if df.empty:
+        raise OmipCleaningError("OMIP input dataframe is empty.")
+
+    cleaned_df = df.copy()
+    _validate_required_columns(cleaned_df)
+    cleaned_df = _coerce_numeric_columns(cleaned_df)
+    cleaned_df = cleaned_df.sort_values("date").reset_index(drop=True)
+    cleaned_df = _drop_duplicate_dates(cleaned_df)
+    _validate_clean_dataframe(cleaned_df)
+    return cleaned_df
+
+
+# =========================
 # Public API
 # =========================
 
@@ -125,12 +148,7 @@ def clean_omip_data(save: bool = True) -> pd.DataFrame:
         Cleaned OMIP dataframe.
     """
     df = load_omip_data()
-
-    _validate_required_columns(df)
-    df = _coerce_numeric_columns(df)
-    df = df.sort_values("date").reset_index(drop=True)
-    df = _drop_duplicate_dates(df)
-    _validate_clean_dataframe(df)
+    df = clean_omip_dataframe(df)
 
     if save:
         df.to_csv(OMIP_CLEAN_FILE, index=False)
