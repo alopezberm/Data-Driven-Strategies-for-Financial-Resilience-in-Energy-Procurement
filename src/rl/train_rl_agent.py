@@ -170,6 +170,11 @@ def train_q_learning_agent(
             env=environment,
             episodes=resolved_training_config.episodes,
         )
+        episode_rewards = [
+            float(item["total_reward"]) if isinstance(item, dict) else float(item)
+            for item in episode_rewards
+        ]
+
     except RLAgentError as exc:
         raise RLTrainingError(f"RL agent training failed: {exc}") from exc
     except Exception as exc:
