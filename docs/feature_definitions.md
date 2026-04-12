@@ -6,6 +6,7 @@
 
 ## Lag Features
 - Spot price lags (1, 7, etc.)
+- Futures-related lags where relevant
 
 ## Rolling Features
 - Moving averages
@@ -20,3 +21,4 @@ Capture:
 - trends
 - seasonality
 - market expectations
+- signals useful for both forecasting and downstream decision policies

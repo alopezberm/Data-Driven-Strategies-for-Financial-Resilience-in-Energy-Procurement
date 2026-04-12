@@ -1,23 +1,24 @@
 # Project Plan
 
 ## Objective
-Build a DSS to optimize energy procurement under uncertainty.
+Build a Decision Support System (DSS) to optimize industrial energy procurement under uncertainty.
 
 ## Problem
 - High volatility in electricity prices
 - Exposure to tail risks
-- Static strategies are inefficient
+- Static procurement strategies are inefficient
 
 ## Approach
-- Quantile forecasting
-- Decision engine (heuristic + RL)
-- Backtesting simulation
+- Quantile forecasting for uncertainty-aware price prediction
+- Decision engine with heuristic policy and RL-based experimental extension
+- Counterfactual backtesting simulation
 
 ## Expected Deliverables
 - Forecasting models
-- Policy engine
+- Decision policies
 - Backtesting results
 - Visual insights
+- Reproducible end-to-end pipeline
 
 ## Timeline (high-level)
 - Week 1: Data & EDA

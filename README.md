@@ -36,7 +36,7 @@ Raw Data → Cleaning → Feature Engineering → Modeling → Decision → Back
 Transforms risk signals into actions:
 
 - Heuristic policy (baseline)
-- RL framework (extension)
+- RL-based policy (experimental extension)
 
 ### 3. Backtesting Engine
 
@@ -44,7 +44,8 @@ Transforms risk signals into actions:
 - Strategy comparison:
   - Spot-only
   - Static hedge
-  - DSS policy
+  - Heuristic policy
+	- RL policy
 
 ---
 
@@ -64,9 +65,14 @@ Key principle: **strict chronological splits (no leakage)**.
 After running the full pipeline, the system generates:
 
 ### Processed Data
+
+- `data/processed/modeling_dataset.csv`
 - `data/processed/train.csv`
 - `data/processed/validation.csv`
 - `data/processed/test.csv`
+- `data/processed/train_features.csv`
+- `data/processed/validation_features.csv`
+- `data/processed/test_features.csv`
 - `data/processed/feature_dictionary.csv`
 
 ### Backtesting Results
@@ -109,7 +115,7 @@ python -m pytest tests/
 Expected:
 
 ```
-35 passed
+39 passed
 ```
 
 ---
@@ -131,6 +137,64 @@ This will:
 
 ---
 
+## 🤖 Reinforcement Learning Strategy
+
+A fourth strategy based on tabular Reinforcement Learning (Q-learning) is implemented and fully integrated into the pipeline.
+
+### Overview
+
+The RL agent learns a daily decision policy over three actions:
+- do_nothing
+- buy_m1_future
+- shift_production
+
+The objective is to minimize realized energy procurement cost over time.
+
+### Implementation
+
+The RL module is structured as follows:
+- `src/rl/rl_environment.py`: environment definition, reward function, and transitions
+- `src/rl/train_rl_agent.py`: training pipeline, diagnostics, and artifact generation
+- `src/rl/utils_rl.py`: RL utilities, summaries, and persistence helpers
+- `src/decision/rl_agent.py`: tabular Q-learning agent
+- `src/decision/rl_policy.py`: policy inference using the trained Q-table
+- `src/backtesting/simulate_rl_policy.py`: RL strategy simulation in backtesting
+
+### Integration in Backtesting
+
+The RL strategy is evaluated alongside:
+- spot_only
+- static_hedge
+- heuristic_policy
+
+All strategies are compared on:
+- total cost
+- savings vs spot-only
+- volatility
+- resilience metrics
+
+### Current Status
+
+The RL strategy is fully functional and integrated, but should currently be considered experimental:
+- it learns non-trivial policies and adapts to market conditions
+- it is sensitive to reward design and state representation
+- it may exploit simplifications in the simulation, especially around frequent shift_production
+
+At the current stage:
+- RL is implemented, tested, and included as a fourth comparable strategy
+- RL can outperform other strategies under some configurations
+- however, its behavior is not yet considered fully robust or fully interpretable
+- the heuristic policy remains the most reliable benchmark for presentation and discussion
+
+Future improvements may include:
+- improved reward design
+- tighter operational constraints
+- refined state representation
+- more realistic treatment of production shifting
+- moving beyond tabular RL
+
+---
+
 ## 📂 Project Structure
 
 ```
@@ -147,9 +211,7 @@ This will:
 │   │   ├── omip/
 │   │   │   └── omip_prices_raw.csv
 │   │   └── weather/
-│   │       ├── openmeteo_raw.csv
-│   │       ├── daily_top0-10_cities_*.csv
-│   │       └── daily_top11-51_cities_*.csv
+│   │       └── openmeteo_raw.csv
 │   │
 │   ├── interim/
 │   │   ├── holidays_clean.csv
@@ -158,6 +220,7 @@ This will:
 │   │   └── merged_interim.csv
 │   │
 │   ├── processed/
+│   │   ├── modeling_dataset.csv
 │   │   ├── train.csv
 │   │   ├── validation.csv
 │   │   ├── test.csv
@@ -217,8 +280,8 @@ This will:
 │   │   └── 03_sensitivity_analysis.ipynb
 │   │
 │   └── 07_reporting/
-│       ├── technical_report.ipynb
-│       └── executive_summary_support.ipynb
+│       ├── 01_technical_report.ipynb
+│       └── 02_executive_summary_support.ipynb
 │
 ├── src/
 │   ├── config/
@@ -253,14 +316,21 @@ This will:
 │   ├── decision/
 │   │   ├── policy_inputs.py
 │   │   ├── heuristic_policy.py
-│   │   ├── rl_environment.py
 │   │   ├── rl_agent.py
+│   │   ├── rl_policy.py
 │   │   ├── action_rules.py
 │   │   └── policy_evaluation.py
+│   │
+│   ├── rl/
+│   │   ├── rl_environment.py
+│   │   ├── train_rl_agent.py
+│   │   ├── evaluate_rl_agent.py
+│   │   └── utils_rl.py
 │   │
 │   ├── backtesting/
 │   │   ├── simulate_baseline.py
 │   │   ├── simulate_policy.py
+│   │   ├── simulate_rl_policy.py
 │   │   ├── compare_strategies.py
 │   │   └── resilience_metrics.py
 │   │
@@ -305,7 +375,8 @@ This will:
     ├── test_data_pipeline.py
     ├── test_feature_engineering.py
     ├── test_models.py
-    └── test_backtesting.py
+    ├── test_backtesting.py
+    └── test_rl.py
 ```
 
 ---
@@ -315,8 +386,9 @@ This will:
 - Full pipeline implemented ✅
 - Modular architecture ✅
 - Reproducible environment ✅
-- All tests passing (35/35) ✅
+- All tests passing (39/39) ✅
 - End-to-end execution working ✅
+- RL strategy integrated as fourth strategy ✅
 
 ---
 
@@ -327,6 +399,7 @@ This will:
 - End-to-end DSS pipeline
 - Counterfactual backtesting framework
 - Reproducible ML system
+- Experimental RL extension integrated into the full pipeline
 
 ---
 
@@ -335,12 +408,16 @@ This will:
 - Notebooks are used for exploration and reporting
 - Core logic is fully implemented in `/src/`
 - Pipeline is production-style and reproducible
+- RL is currently included as an experimental extension and benchmark, not as the primary production-ready decision policy
 
 ---
 
 ## 👥 Authors
 
 DTU – MSc Business Analytics (Group 17)
+s424875 - Ignacio Ripoll González
+s253159 - Pablo Baurier Gasch
+s253272 - Alejandro López Bermejo
 
 ---
 
