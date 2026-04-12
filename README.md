@@ -6,125 +6,135 @@ A Data-Driven Decision Support System (DSS) to optimize industrial energy procur
 
 ## 📌 Executive Summary
 
-Industrial manufacturers in the Spanish electricity market (MIBEL) face extreme price volatility, where sudden Spot price spikes can erase monthly profit margins. Traditional procurement strategies force a rigid choice between expensive fixed contracts and highly volatile Spot market exposure, failing to dynamically manage **tail risks**.
+Industrial manufacturers in the Spanish electricity market (MIBEL) face extreme price volatility. Sudden Spot price spikes can significantly impact profitability. Traditional procurement strategies force a rigid choice between fixed contracts and Spot exposure, failing to dynamically manage **tail risks**.
 
-This repository presents an **Advanced Decision Support System (DSS)** designed as a virtual consultant. The system provides daily, data-driven recommendations to optimize both:
+This project presents an **end-to-end Decision Support System (DSS)** that acts as a virtual consultant, providing daily recommendations for:
 
-- **Financial hedging** (via futures contracts)
-- **Operational decisions** (e.g., shifting production based on external signals)
+- Financial hedging (futures contracts)
+- Operational decisions (e.g., production shifting)
 
-The objective is to **minimize expected procurement costs under uncertainty while reducing exposure to extreme price spikes (tail risk)**.
-
----
-
-## ⚙️ Architecture & Methodology
-
-The solution follows a two-stage analytics framework:
-
-### 1. Risk Prediction Engine (Machine Learning)
-
-Instead of predicting only expected prices, the system focuses on **uncertainty-aware forecasting**:
-
-- Predicts **conditional quantiles** (e.g., 90th/95th percentile)
-- Captures **tail risk exposure**
-- Provides probabilistic insights into extreme price scenarios
-
-This enables a shift from point forecasting to **risk-aware decision making**.
+The goal is to **minimize expected costs under uncertainty while reducing exposure to extreme price events**.
 
 ---
 
-### 2. Prescriptive Decision Engine
+## ⚙️ System Architecture
 
-A decision-making module transforms risk signals into actions:
+The solution follows a modular pipeline:
 
-- **Financial Actions**
-  - Example: *Buy M+1 futures to lock in prices*
-- **Operational Actions**
-  - Example: *Shift production to avoid high-cost periods*
+```
+Raw Data → Cleaning → Feature Engineering → Modeling → Decision → Backtesting
+```
 
-Two approaches are considered:
+### 1. Risk Prediction Engine
 
-- Data-driven **heuristic policies** (baseline)
-- **Reinforcement Learning (RL)** (advanced extension)
+- Quantile forecasting (e.g., q50, q90)
+- Tail-risk awareness instead of point prediction
+- Captures extreme price scenarios
 
-The system effectively solves:
+### 2. Decision Engine
 
-\[
-\text{Optimal Decision} = \arg\min \mathbb{E}[\text{Cost} \mid \text{Uncertainty}]
-\]
+Transforms risk signals into actions:
+
+- Heuristic policy (baseline)
+- RL framework (extension)
+
+### 3. Backtesting Engine
+
+- Counterfactual simulation
+- Strategy comparison:
+  - Spot-only
+  - Static hedge
+  - DSS policy
 
 ---
 
-## 📊 Data Strategy
+## 📊 Data Sources
 
-The model relies on a time-aware, multi-source dataset:
-
-### 🔹 Spot Market & External Drivers
-- Daily Spot electricity prices (SPEL)
-- Weather variables (temperature, wind, radiation, etc.)
-- Calendar features (seasonality, holidays)
-
-### 🔹 Hedging Alternatives
+- Spot prices (SPEL)
 - OMIP Futures (M+1 to M+6)
-- Prices and Open Interest
+- Weather data (OpenMeteo)
+- Calendar features (holidays, seasonality)
 
-### 🔹 Key Design Principle
-- Strict **chronological split** (no data leakage)
-- Designed for **real-world deployment conditions**
-
----
-
-## 📈 Business Impact Validation
-
-To demonstrate real-world value, the project includes a:
-
-### 🔁 Counterfactual Backtesting Framework
-
-Simulates decision-making over unseen data:
-
-- Applies DSS recommendations day-by-day
-- Compares against baseline strategies:
-  - Spot-only procurement
-  - Static hedging
-
-### 📏 Evaluation Metrics
-
-- 💰 Total procurement cost
-- 📉 Cost savings vs baseline
-- ⚡ Exposure to extreme price events
-- 📊 Stability of energy costs (resilience)
+Key principle: **strict chronological splits (no leakage)**.
 
 ---
 
-## 🎯 Key Contributions
+## 📈 Outputs
 
-- Tail-risk-aware forecasting of electricity prices
-- Integration of financial hedging and operational flexibility
-- Prescriptive analytics for decision optimization
-- Counterfactual evaluation of strategies under uncertainty
-- End-to-end Decision Support System (DSS)
+After running the full pipeline, the system generates:
 
----
+### Processed Data
+- `data/processed/train.csv`
+- `data/processed/validation.csv`
+- `data/processed/test.csv`
+- `data/processed/feature_dictionary.csv`
 
-## 🔁 Reproducibility
+### Backtesting Results
+- Strategy simulations (`data/outputs/backtests/`)
+- Policy decisions (`data/outputs/policies/`)
 
-The project is fully modular and reproducible:
-
-- Pipeline:  
-  `Raw Data → Cleaning → Feature Engineering → Modeling → Decision → Backtesting`
-
-- All experiments:
-  - Respect temporal ordering
-  - Avoid data leakage
-  - Are reproducible via `/src/` scripts or `/notebooks/`
+### Visualizations
+- Cost comparison
+- Quantile forecasts
+- Tail exceedances
+- Policy timelines
 
 ---
 
-## 📂 Repository Structure
+## 🚀 How to Run the Project
+
+### Option 1 — Using virtual environment (recommended)
 
 ```bash
-group17_tailrisk_solutions/
-│
+python -m venv .venv
+source .venv/bin/activate
+pip install -r requirements.txt
+```
+
+### Option 2 — Using Conda
+
+```bash
+conda env create -f environment.yml
+conda activate tailrisk-env
+```
+
+---
+
+### Run tests (sanity check)
+
+```bash
+python -m pytest tests/
+```
+
+Expected:
+
+```
+35 passed
+```
+
+---
+
+### Run full pipeline (end-to-end)
+
+```bash
+python -m src.pipeline.run_full_pipeline
+```
+
+This will:
+
+1. Build modeling dataset
+2. Generate features
+3. Train quantile models
+4. Apply decision policy
+5. Run backtesting
+6. Save results and figures
+
+---
+
+## 📂 Project Structure
+
+```
+.
 ├── README.md
 ├── requirements.txt
 ├── environment.yml
@@ -132,30 +142,47 @@ group17_tailrisk_solutions/
 │
 ├── data/
 │   ├── raw/
+│   │   ├── holidays/
+│   │   │   └── holidays_raw.csv
 │   │   ├── omip/
 │   │   │   └── omip_prices_raw.csv
-│   │   ├── weather/
-│   │   │   └── openmeteo_raw.csv
-│   │   └── holidays/
-│   │       └── holidays_raw.csv
+│   │   └── weather/
+│   │       ├── openmeteo_raw.csv
+│   │       ├── daily_top0-10_cities_*.csv
+│   │       └── daily_top11-51_cities_*.csv
 │   │
 │   ├── interim/
+│   │   ├── holidays_clean.csv
 │   │   ├── omip_clean.csv
 │   │   ├── weather_clean.csv
 │   │   └── merged_interim.csv
 │   │
 │   ├── processed/
-│   │   ├── modeling_dataset.csv
 │   │   ├── train.csv
 │   │   ├── validation.csv
 │   │   ├── test.csv
+│   │   ├── train_features.csv
+│   │   ├── validation_features.csv
+│   │   ├── test_features.csv
 │   │   └── feature_dictionary.csv
 │   │
 │   └── outputs/
-│       ├── forecasts/
 │       ├── backtests/
+│       │   ├── validation_heuristic_policy.csv
+│       │   ├── validation_spot_only.csv
+│       │   └── validation_static_hedge.csv
 │       ├── policies/
+│       │   └── validation_policy_decisions.csv
 │       └── figures/
+│           ├── cumulative_costs_by_strategy.png
+│           ├── daily_costs_by_strategy.png
+│           ├── daily_savings_vs_spot_only.png
+│           ├── heuristic_policy_action_timeline.png
+│           ├── quantile_band_q50_q90.png
+│           ├── quantile_error_q90.png
+│           ├── quantile_forecasts.png
+│           ├── total_cost_bar_chart.png
+│           └── upper_tail_exceedances_q90.png
 │
 ├── notebooks/
 │   ├── 01_data_extraction/
@@ -194,16 +221,12 @@ group17_tailrisk_solutions/
 │       └── executive_summary_support.ipynb
 │
 ├── src/
-│   ├── __init__.py
-│   │
 │   ├── config/
-│   │   ├── __init__.py
 │   │   ├── paths.py
 │   │   ├── settings.py
 │   │   └── constants.py
 │   │
 │   ├── data/
-│   │   ├── __init__.py
 │   │   ├── load_raw_data.py
 │   │   ├── clean_omip.py
 │   │   ├── clean_weather.py
@@ -212,7 +235,6 @@ group17_tailrisk_solutions/
 │   │   └── split_data.py
 │   │
 │   ├── features/
-│   │   ├── __init__.py
 │   │   ├── build_time_features.py
 │   │   ├── build_lag_features.py
 │   │   ├── build_rolling_features.py
@@ -221,7 +243,6 @@ group17_tailrisk_solutions/
 │   │   └── feature_selection.py
 │   │
 │   ├── models/
-│   │   ├── __init__.py
 │   │   ├── baseline_models.py
 │   │   ├── quantile_models.py
 │   │   ├── tail_risk_models.py
@@ -230,7 +251,6 @@ group17_tailrisk_solutions/
 │   │   └── evaluate_model.py
 │   │
 │   ├── decision/
-│   │   ├── __init__.py
 │   │   ├── policy_inputs.py
 │   │   ├── heuristic_policy.py
 │   │   ├── rl_environment.py
@@ -239,33 +259,29 @@ group17_tailrisk_solutions/
 │   │   └── policy_evaluation.py
 │   │
 │   ├── backtesting/
-│   │   ├── __init__.py
 │   │   ├── simulate_baseline.py
 │   │   ├── simulate_policy.py
 │   │   ├── compare_strategies.py
 │   │   └── resilience_metrics.py
 │   │
 │   ├── explainability/
-│   │   ├── __init__.py
 │   │   ├── shap_analysis.py
 │   │   ├── feature_importance.py
 │   │   └── scenario_explanations.py
 │   │
 │   ├── visualization/
-│   │   ├── __init__.py
 │   │   ├── plot_forecasts.py
 │   │   ├── plot_quantiles.py
 │   │   ├── plot_backtest_results.py
 │   │   └── plot_policy_actions.py
 │   │
 │   ├── pipeline/
-│   │   ├── __init__.py
+│   │   ├── run_full_pipeline.py
 │   │   ├── run_backtest.py
 │   │   ├── build_modeling_dataset.py
 │   │   └── build_feature_dictionary.py
 │   │
 │   └── utils/
-│       ├── __init__.py
 │       ├── logger.py
 │       ├── metrics.py
 │       ├── helpers.py
@@ -273,15 +289,9 @@ group17_tailrisk_solutions/
 │
 ├── reports/
 │   ├── figures/
-│   ├── tables/
-│   ├── executive_summary/
-│   │   └── executive_summary.pdf
-│   ├── technical_report/
-│   │   ├── technical_report.ipynb
-│   │   ├── technical_report.html
-│   │   └── technical_report.pdf
-│   └── contributions/
-│       └── statement_of_contributions.pdf
+│   └── technical_report/
+│       ├── technical_report.ipynb
+│       └── technical_report.html
 │
 ├── docs/
 │   ├── project_plan.md
@@ -297,3 +307,43 @@ group17_tailrisk_solutions/
     ├── test_models.py
     └── test_backtesting.py
 ```
+
+---
+
+## ✅ Current Status
+
+- Full pipeline implemented ✅
+- Modular architecture ✅
+- Reproducible environment ✅
+- All tests passing (35/35) ✅
+- End-to-end execution working ✅
+
+---
+
+## 🎯 Key Contributions
+
+- Tail-risk-aware electricity price forecasting
+- Integration of financial and operational decisions
+- End-to-end DSS pipeline
+- Counterfactual backtesting framework
+- Reproducible ML system
+
+---
+
+## 📌 Notes
+
+- Notebooks are used for exploration and reporting
+- Core logic is fully implemented in `/src/`
+- Pipeline is production-style and reproducible
+
+---
+
+## 👥 Authors
+
+DTU – MSc Business Analytics (Group 17)
+
+---
+
+## 📄 License
+
+Academic project – for educational purposes only
