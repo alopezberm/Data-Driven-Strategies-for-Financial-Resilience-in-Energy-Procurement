@@ -178,7 +178,7 @@ class EnergyRLEnvironment:
 
         current_row = self.df.iloc[self.current_step]
 
-        reward = self._compute_reward(current_row, action)
+        reward = self._compute_reward(action)
 
         row = self.df.iloc[self.current_step]
         
