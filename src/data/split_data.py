@@ -160,15 +160,19 @@ def _save_splits(train_df: pd.DataFrame, validation_df: pd.DataFrame, test_df: p
 # Dataframe-level split function for tests and in-memory use
 def chronological_train_validation_test_split(
     df: pd.DataFrame,
-    train_end_date: str,
-    validation_end_date: str,
+    train_end_date: str | None = None,
+    validation_end_date: str | None = None,
     date_column: str = DATE_COLUMN,
+    train_ratio: float | None = None,
+    validation_ratio: float | None = None,
+    test_ratio: float | None = None,
 ) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
     """
     Split an already-loaded dataframe chronologically into train, validation, and test sets.
 
-    This dataframe-level API is useful for tests and for callers that already
-    have the merged dataset in memory.
+    Supports either:
+    - explicit date boundaries, or
+    - ratio-based splitting.
     """
     if df.empty:
         raise SplitDataError("Input dataframe is empty.")
@@ -192,20 +196,46 @@ def chronological_train_validation_test_split(
 
     result_df = result_df.sort_values(date_column).reset_index(drop=True)
 
-    train_end_ts = pd.Timestamp(train_end_date)
-    validation_end_ts = pd.Timestamp(validation_end_date)
+    # Mode 1: date-based split
+    if train_end_date is not None and validation_end_date is not None:
+        train_end_ts = pd.Timestamp(train_end_date)
+        validation_end_ts = pd.Timestamp(validation_end_date)
 
-    if train_end_ts >= validation_end_ts:
+        if train_end_ts >= validation_end_ts:
+            raise SplitDataError(
+                "train_end_date must be strictly earlier than validation_end_date."
+            )
+
+        train_df = result_df.loc[result_df[date_column] <= train_end_ts].copy()
+        validation_df = result_df.loc[
+            (result_df[date_column] > train_end_ts)
+            & (result_df[date_column] <= validation_end_ts)
+        ].copy()
+        test_df = result_df.loc[result_df[date_column] > validation_end_ts].copy()
+
+    # Mode 2: ratio-based split
+    elif (
+        train_ratio is not None
+        and validation_ratio is not None
+        and test_ratio is not None
+    ):
+        ratio_sum = train_ratio + validation_ratio + test_ratio
+        if abs(ratio_sum - 1.0) > 1e-9:
+            raise SplitDataError("train_ratio + validation_ratio + test_ratio must equal 1.0.")
+
+        n = len(result_df)
+        train_end_idx = int(n * train_ratio)
+        validation_end_idx = train_end_idx + int(n * validation_ratio)
+
+        train_df = result_df.iloc[:train_end_idx].copy()
+        validation_df = result_df.iloc[train_end_idx:validation_end_idx].copy()
+        test_df = result_df.iloc[validation_end_idx:].copy()
+
+    else:
         raise SplitDataError(
-            "train_end_date must be strictly earlier than validation_end_date."
+            "Provide either (train_end_date and validation_end_date) "
+            "or (train_ratio, validation_ratio, test_ratio)."
         )
-
-    train_df = result_df.loc[result_df[date_column] <= train_end_ts].copy()
-    validation_df = result_df.loc[
-        (result_df[date_column] > train_end_ts)
-        & (result_df[date_column] <= validation_end_ts)
-    ].copy()
-    test_df = result_df.loc[result_df[date_column] > validation_end_ts].copy()
 
     if train_df.empty or validation_df.empty or test_df.empty:
         raise SplitDataError(

@@ -171,6 +171,7 @@ def clean_weather_dataframe(df: pd.DataFrame) -> pd.DataFrame:
 
     cleaned_df = df.copy()
     _validate_required_columns(cleaned_df)
+    cleaned_df["date"] = pd.to_datetime(cleaned_df["date"], errors="coerce")
     cleaned_df = _coerce_numeric_columns(cleaned_df)
     cleaned_df = _convert_timestamp_columns(cleaned_df)
     cleaned_df = _cast_integer_like_columns(cleaned_df)

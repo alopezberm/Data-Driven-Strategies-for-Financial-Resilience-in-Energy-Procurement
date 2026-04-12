@@ -147,31 +147,22 @@ def combine_quantile_predictions(results: Sequence[QuantileModelResults]) -> pd.
 
 
 def evaluate_quantile_predictions(
-    quantile_results: Sequence[QuantileModelResults],
+    y_true,
+    y_pred,
+    quantile: float,
 ) -> pd.DataFrame:
     """
-    Convenience wrapper to evaluate quantile predictions.
-
-    Returns a dataframe with:
-    - quantile
-    - empirical_coverage
-    - coverage_error
-    - n_obs
-
-    This is mainly used for testing and quick evaluation.
+    Convenience wrapper used in tests for evaluating one quantile forecast.
     """
-    if not quantile_results:
-        raise ModelEvaluationError("Quantile results list cannot be empty.")
-
-    combined_df = combine_quantile_predictions(quantile_results)
-    quantile_columns = _get_sorted_quantile_columns(combined_df)
-
-    rows = []
-    for col in quantile_columns:
-        metrics = evaluate_quantile_coverage(combined_df, col)
-        rows.append(metrics)
-
-    return pd.DataFrame(rows)
+    quantile_column = f"q_{quantile:g}"
+    eval_df = pd.DataFrame(
+        {
+            "y_true": y_true,
+            quantile_column: y_pred,
+        }
+    )
+    metrics = evaluate_quantile_coverage(eval_df, quantile_column)
+    return pd.DataFrame([metrics])
 
 
 def evaluate_quantile_coverage(
@@ -213,7 +204,7 @@ def evaluate_prediction_interval(
     combined_quantile_df: pd.DataFrame,
     lower_quantile_column: str,
     upper_quantile_column: str,
-) -> dict[str, float]:
+) -> pd.DataFrame:
     """
     Evaluate a prediction interval built from two quantile columns.
 
@@ -254,13 +245,17 @@ def evaluate_prediction_interval(
         (eval_df[upper_quantile_column] - eval_df[lower_quantile_column]).mean()
     )
 
-    return {
-        "lower_quantile_column": lower_quantile_column,
-        "upper_quantile_column": upper_quantile_column,
-        "empirical_coverage": empirical_coverage,
-        "average_interval_width": avg_interval_width,
-        "n_obs": float(len(eval_df)),
-    }
+    return pd.DataFrame(
+        [
+            {
+                "lower_quantile_column": lower_quantile_column,
+                "upper_quantile_column": upper_quantile_column,
+                "empirical_coverage": empirical_coverage,
+                "average_interval_width": avg_interval_width,
+                "n_obs": float(len(eval_df)),
+            }
+        ]
+    )
 
 
 
@@ -320,7 +315,7 @@ def build_quantile_diagnostics_report(
     quantile_columns = _get_sorted_quantile_columns(combined_df)
 
     coverage_rows: list[dict[str, float]] = []
-    interval_rows: list[dict[str, float]] = []
+    interval_frames: list[pd.DataFrame] = []
     exceedance_rows: list[dict[str, float]] = []
 
     for quantile_column in quantile_columns:
@@ -334,14 +329,26 @@ def build_quantile_diagnostics_report(
 
     if len(quantile_columns) >= 2:
         for lower_col, upper_col in zip(quantile_columns[:-1], quantile_columns[1:]):
-            interval_rows.append(
+            interval_frames.append(
                 evaluate_prediction_interval(combined_df, lower_col, upper_col)
             )
 
     diagnostics = {
         "combined_predictions": combined_df,
         "coverage_summary": pd.DataFrame(coverage_rows),
-        "interval_summary": pd.DataFrame(interval_rows),
+        "interval_summary": (
+            pd.concat(interval_frames, ignore_index=True)
+            if interval_frames
+            else pd.DataFrame(
+                columns=[
+                    "lower_quantile_column",
+                    "upper_quantile_column",
+                    "empirical_coverage",
+                    "average_interval_width",
+                    "n_obs",
+                ]
+            )
+        ),
         "upper_tail_exceedance_summary": pd.DataFrame(exceedance_rows),
     }
 

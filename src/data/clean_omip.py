@@ -112,8 +112,13 @@ def clean_omip_dataframe(df: pd.DataFrame) -> pd.DataFrame:
         raise OmipCleaningError("OMIP input dataframe is empty.")
 
     cleaned_df = df.copy()
+
+    if "Date" in cleaned_df.columns and "date" not in cleaned_df.columns:
+        cleaned_df = cleaned_df.rename(columns={"Date": "date"})
+
     _validate_required_columns(cleaned_df)
     cleaned_df = _coerce_numeric_columns(cleaned_df)
+    cleaned_df["date"] = pd.to_datetime(cleaned_df["date"], errors="coerce")
     cleaned_df = cleaned_df.sort_values("date").reset_index(drop=True)
     cleaned_df = _drop_duplicate_dates(cleaned_df)
     _validate_clean_dataframe(cleaned_df)
