@@ -156,6 +156,25 @@ def _validate_clean_dataframe(df: pd.DataFrame) -> None:
 # Public API
 # =========================
 
+def clean_holidays_dataframe(df: pd.DataFrame) -> pd.DataFrame:
+    """
+    Clean an already-loaded holidays dataframe.
+
+    This dataframe-level API is useful for tests and for callers that already
+    have the raw holidays data in memory.
+    """
+    if df.empty:
+        raise HolidaysCleaningError("Holidays input dataframe is empty.")
+
+    cleaned_df = df.copy()
+    cleaned_df = _standardize_date_column(cleaned_df)
+    cleaned_df = _normalize_holiday_flag(cleaned_df)
+    cleaned_df = _normalize_holiday_name(cleaned_df)
+    cleaned_df = cleaned_df.sort_values("date").reset_index(drop=True)
+    cleaned_df = _drop_duplicate_dates(cleaned_df)
+    _validate_clean_dataframe(cleaned_df)
+    return cleaned_df
+
 def clean_holidays_data(save: bool = True) -> pd.DataFrame:
     """
     Load, clean, validate, and optionally save the holidays dataset.
@@ -181,12 +200,7 @@ def clean_holidays_data(save: bool = True) -> pd.DataFrame:
         Cleaned holidays dataframe.
     """
     df = _load_holidays_raw()
-    df = _standardize_date_column(df)
-    df = _normalize_holiday_flag(df)
-    df = _normalize_holiday_name(df)
-    df = df.sort_values("date").reset_index(drop=True)
-    df = _drop_duplicate_dates(df)
-    _validate_clean_dataframe(df)
+    df = clean_holidays_dataframe(df)
 
     if save:
         df.to_csv(HOLIDAYS_CLEAN_FILE, index=False)

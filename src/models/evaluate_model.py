@@ -146,6 +146,33 @@ def combine_quantile_predictions(results: Sequence[QuantileModelResults]) -> pd.
     return combined_df
 
 
+def evaluate_quantile_predictions(
+    quantile_results: Sequence[QuantileModelResults],
+) -> pd.DataFrame:
+    """
+    Convenience wrapper to evaluate quantile predictions.
+
+    Returns a dataframe with:
+    - quantile
+    - empirical_coverage
+    - coverage_error
+    - n_obs
+
+    This is mainly used for testing and quick evaluation.
+    """
+    if not quantile_results:
+        raise ModelEvaluationError("Quantile results list cannot be empty.")
+
+    combined_df = combine_quantile_predictions(quantile_results)
+    quantile_columns = _get_sorted_quantile_columns(combined_df)
+
+    rows = []
+    for col in quantile_columns:
+        metrics = evaluate_quantile_coverage(combined_df, col)
+        rows.append(metrics)
+
+    return pd.DataFrame(rows)
+
 
 def evaluate_quantile_coverage(
     combined_quantile_df: pd.DataFrame,
