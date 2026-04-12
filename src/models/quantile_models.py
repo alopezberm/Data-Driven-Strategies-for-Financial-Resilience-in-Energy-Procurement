@@ -131,8 +131,8 @@ def _validate_quantiles(quantiles: list[float]) -> None:
 
 def prepare_quantile_target(
     df: pd.DataFrame,
-    target_column: str = DEFAULT_TARGET_COLUMN,
-    horizon: int = DEFAULT_HORIZON,
+    target_column: str = TARGET_COLUMN,
+    horizon: int = DEFAULT_FORECAST_HORIZON,
 ) -> pd.DataFrame:
     """
     Create a forward target for supervised quantile forecasting.
