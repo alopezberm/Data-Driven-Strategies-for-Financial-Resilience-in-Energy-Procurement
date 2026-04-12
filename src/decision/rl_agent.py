@@ -142,7 +142,7 @@ class BaseRLAgent:
     def train(
         self,
         env: EnergyRLEnvironment,
-        n_episodes: int = 1,
+        episodes: int = 1,
     ) -> list[dict[str, float]]:
         """
         Run training rollouts against the environment.
@@ -152,12 +152,12 @@ class BaseRLAgent:
         list[dict[str, float]]
             One summary dictionary per episode.
         """
-        if n_episodes <= 0:
-            raise RLAgentError("n_episodes must be strictly positive.")
+        if episodes <= 0:
+            raise RLAgentError("episodes must be strictly positive.")
 
         history: list[dict[str, float]] = []
 
-        for episode in range(n_episodes):
+        for episode in range(episodes):
             state = env.reset()
             done = False
             total_reward = 0.0
@@ -327,10 +327,10 @@ class QLearningAgent(BaseRLAgent):
 def evaluate_agent(
     agent: BaseRLAgent,
     env: EnergyRLEnvironment,
-    n_episodes: int = 1,
+    episodes: int = 1,
 ) -> list[dict[str, float]]:
     """Convenience wrapper for agent rollout evaluation."""
-    return agent.train(env=env, n_episodes=n_episodes)
+    return agent.train(env=env, episodes=episodes)
 
 
 if __name__ == "__main__":
@@ -356,13 +356,13 @@ if __name__ == "__main__":
 
     print("=== RANDOM AGENT ===")
     random_agent = RandomAgent()
-    print(evaluate_agent(random_agent, env, n_episodes=2))
+    print(evaluate_agent(random_agent, env, episodes=2))
 
     print("\n=== HEURISTIC RL AGENT ===")
     heuristic_agent = HeuristicRLAgent()
-    print(evaluate_agent(heuristic_agent, env, n_episodes=2))
+    print(evaluate_agent(heuristic_agent, env, episodes=2))
 
     print("\n=== Q-LEARNING AGENT (SKELETON) ===")
     q_agent = QLearningAgent()
-    print(evaluate_agent(q_agent, env, n_episodes=2))
+    print(evaluate_agent(q_agent, env, episodes=2))
     print("Q-table size:", len(q_agent.q_table))
