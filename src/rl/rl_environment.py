@@ -42,9 +42,9 @@ class RLEnvironmentConfig:
     action_column: str = "action"
 
     # Reward shaping
-    risk_aversion: float = 1.0
-    hedge_cost_penalty: float = 0.1
-    shift_penalty: float = 0.05
+    risk_aversion: float = 0.0
+    hedge_cost_penalty: float = 0.0
+    shift_penalty: float = 2.0
     action_penalty: float = 0.0
 
     @classmethod
@@ -60,9 +60,9 @@ class RLEnvironmentConfig:
             weekend_column="is_weekend",
             holiday_column="Is_national_holiday",
             action_column="action",
-            risk_aversion=settings.risk_aversion,
-            hedge_cost_penalty=settings.hedge_cost_penalty,
-            shift_penalty=0.05,
+            risk_aversion=0.0,
+            hedge_cost_penalty=0.0,
+            shift_penalty=2.0,
             action_penalty=0.0,
         )
 
@@ -252,11 +252,10 @@ class EnergyRLEnvironment:
     # =========================
 
     def _compute_reward(self, action: int) -> float:
-        """Compute a cost-based reward aligned with the procurement decision problem."""
+        """Compute a simple daily cost-based reward for RL training."""
         row = self.df.iloc[self.current_step]
 
         central_forecast = float(row[self.config.q50_column])
-        tail_forecast = float(row[self.config.q90_column])
         future_price = float(row[self.config.future_column])
         spot_price = (
             float(row[self.config.spot_column])
@@ -264,22 +263,18 @@ class EnergyRLEnvironment:
             else central_forecast
         )
 
-        base_cost = spot_price
         realized_cost = spot_price
 
         if action == 1:
-            realized_cost = future_price + self.config.hedge_cost_penalty * future_price
+            realized_cost = future_price + self.config.hedge_cost_penalty
         elif action == 2:
-            realized_cost = max(0.0, spot_price - 0.5 * (tail_forecast - central_forecast))
-            realized_cost += self.config.shift_penalty * spot_price
-
-        tail_risk = max(0.0, tail_forecast - central_forecast)
-        reward = -realized_cost - self.config.risk_aversion * tail_risk
+            shifted_fraction = 0.5
+            realized_cost = (1.0 - shifted_fraction) * spot_price + shifted_fraction * self.config.shift_penalty
 
         if action != 0:
-            reward -= self.config.action_penalty
+            realized_cost += self.config.action_penalty
 
-        reward += max(0.0, base_cost - realized_cost)
+        reward = -realized_cost
         return float(reward)
 
 
