@@ -1,5 +1,3 @@
-
-
 """
 simulate_baseline.py
 
@@ -14,14 +12,20 @@ from dataclasses import dataclass
 
 import pandas as pd
 
-
-DEFAULT_SPOT_COLUMN = "Spot_Price_SPEL"
-DEFAULT_FUTURE_COLUMN = "Future_M1_Price"
-DEFAULT_VOLUME_COLUMN = "daily_energy_mwh"
+from src.config.constants import (
+    DEFAULT_DAILY_VOLUME,
+    DEFAULT_FUTURE_COLUMN,
+    DEFAULT_SPOT_COLUMN,
+    DEFAULT_STATIC_HEDGE_RATIO,
+)
+from src.config.settings import SimulationSettings, TrainingSettings, get_default_settings
 
 
 class BaselineSimulationError(Exception):
     """Raised when a baseline strategy cannot be simulated safely."""
+
+
+DEFAULT_VOLUME_COLUMN = "daily_energy_mwh"
 
 
 @dataclass
@@ -31,8 +35,32 @@ class BaselineSimulationConfig:
     spot_column: str = DEFAULT_SPOT_COLUMN
     future_column: str = DEFAULT_FUTURE_COLUMN
     volume_column: str = DEFAULT_VOLUME_COLUMN
-    default_daily_volume: float = 1.0
-    hedge_ratio: float = 1.0
+    default_daily_volume: float = DEFAULT_DAILY_VOLUME
+    hedge_ratio: float = DEFAULT_STATIC_HEDGE_RATIO
+
+    @classmethod
+    def from_project_settings(
+        cls,
+        training_settings: TrainingSettings,
+        simulation_settings: SimulationSettings,
+    ) -> "BaselineSimulationConfig":
+        """Build baseline simulation config from centralized project settings."""
+        return cls(
+            spot_column=training_settings.target_column,
+            future_column=DEFAULT_FUTURE_COLUMN,
+            volume_column=DEFAULT_VOLUME_COLUMN,
+            default_daily_volume=simulation_settings.default_daily_volume,
+            hedge_ratio=training_settings.static_hedge_ratio,
+        )
+
+
+def get_default_baseline_simulation_config() -> BaselineSimulationConfig:
+    """Build the default baseline simulation config from project settings."""
+    settings = get_default_settings()
+    return BaselineSimulationConfig.from_project_settings(
+        settings.training,
+        settings.simulation,
+    )
 
 
 # =========================
@@ -134,7 +162,7 @@ def simulate_spot_only_baseline(
     - The factory buys its full daily energy need on the spot market.
     - No hedging and no load shifting are applied.
     """
-    config = BaselineSimulationConfig() if config is None else config
+    config = get_default_baseline_simulation_config() if config is None else config
 
     simulation_df = _validate_input_dataframe(df, config)
     simulation_df = _ensure_volume_column(simulation_df, config)
@@ -174,7 +202,7 @@ def simulate_static_hedge_baseline(
     margining, or exact market microstructure. Its purpose is to provide a
     transparent comparison point for the DSS.
     """
-    config = BaselineSimulationConfig() if config is None else config
+    config = get_default_baseline_simulation_config() if config is None else config
 
     simulation_df = _validate_input_dataframe(df, config)
     simulation_df = _ensure_volume_column(simulation_df, config)
@@ -258,10 +286,13 @@ if __name__ == "__main__":
         }
     )
 
-    spot_only_df = simulate_spot_only_baseline(example_df)
+    config = get_default_baseline_simulation_config()
+    print(config)
+
+    spot_only_df = simulate_spot_only_baseline(example_df, config=config)
     static_hedge_df = simulate_static_hedge_baseline(
         example_df,
-        config=BaselineSimulationConfig(hedge_ratio=0.7),
+        config=config,
     )
 
     print(spot_only_df[["date", "strategy_name", "spot_cost", "total_cost"]])

@@ -15,11 +15,15 @@ import pandas as pd
 from sklearn.ensemble import GradientBoostingRegressor
 from sklearn.metrics import mean_absolute_error, mean_squared_error, mean_pinball_loss
 
+from src.config.constants import (
+    DEFAULT_FORECAST_HORIZON,
+    DEFAULT_QUANTILES,
+    TARGET_COLUMN,
+)
+from src.config.settings import TrainingSettings, get_default_settings
 
-DEFAULT_TARGET_COLUMN = "Spot_Price_SPEL"
-DEFAULT_HORIZON = 1
-DEFAULT_QUANTILES = [0.5, 0.9, 0.95]
-DEFAULT_FEATURE_COLUMNS = [
+
+DEFAULT_QUANTILE_FEATURE_COLUMNS = [
     "Spot_Price_SPEL_lag_1",
     "Spot_Price_SPEL_lag_2",
     "Spot_Price_SPEL_lag_3",
@@ -198,8 +202,8 @@ def train_single_quantile_model(
     train_df: pd.DataFrame,
     test_df: pd.DataFrame,
     quantile: float,
-    target_column: str = DEFAULT_TARGET_COLUMN,
-    horizon: int = DEFAULT_HORIZON,
+    target_column: str = TARGET_COLUMN,
+    horizon: int = DEFAULT_FORECAST_HORIZON,
     feature_columns: list[str] | None = None,
     model_params: dict | None = None,
 ) -> tuple[QuantileModelResults, GradientBoostingRegressor, list[str]]:
@@ -212,7 +216,9 @@ def train_single_quantile_model(
         Results object, fitted model, and list of used features.
     """
     _validate_quantiles([quantile])
-    feature_columns = DEFAULT_FEATURE_COLUMNS if feature_columns is None else feature_columns
+
+    default_config = get_default_quantile_model_config()
+    feature_columns = default_config.resolved_feature_columns() if feature_columns is None else feature_columns
 
     default_model_params = {
         "loss": "quantile",
@@ -266,8 +272,8 @@ def train_quantile_models(
     train_df: pd.DataFrame,
     test_df: pd.DataFrame,
     quantiles: list[float] | None = None,
-    target_column: str = DEFAULT_TARGET_COLUMN,
-    horizon: int = DEFAULT_HORIZON,
+    target_column: str = TARGET_COLUMN,
+    horizon: int = DEFAULT_FORECAST_HORIZON,
     feature_columns: list[str] | None = None,
     model_params: dict | None = None,
 ) -> tuple[list[QuantileModelResults], dict[float, GradientBoostingRegressor], list[str]]:
@@ -279,8 +285,72 @@ def train_quantile_models(
     tuple[list[QuantileModelResults], dict[float, GradientBoostingRegressor], list[str]]
         Results list, dictionary of fitted models, and feature list used.
     """
-    quantiles = DEFAULT_QUANTILES if quantiles is None else quantiles
+    default_config = get_default_quantile_model_config()
+    quantiles = default_config.resolved_quantiles() if quantiles is None else quantiles
     _validate_quantiles(quantiles)
+# =========================
+# Validation helpers
+# =========================
+
+
+@dataclass
+class QuantileModelConfig:
+    """Configuration for quantile model training."""
+
+    target_column: str = TARGET_COLUMN
+    horizon: int = DEFAULT_FORECAST_HORIZON
+    quantiles: list[float] | None = None
+    feature_columns: list[str] | None = None
+    model_params: dict | None = None
+
+    def resolved_quantiles(self) -> list[float]:
+        """Return configured quantiles or project defaults."""
+        return list(DEFAULT_QUANTILES) if self.quantiles is None else list(self.quantiles)
+
+    def resolved_feature_columns(self) -> list[str]:
+        """Return configured feature columns or module defaults."""
+        return list(DEFAULT_QUANTILE_FEATURE_COLUMNS) if self.feature_columns is None else list(self.feature_columns)
+
+    @classmethod
+    def from_training_settings(cls, training_settings: TrainingSettings) -> "QuantileModelConfig":
+        """Build quantile-model configuration from centralized training settings."""
+        return cls(
+            target_column=training_settings.target_column,
+            horizon=training_settings.forecast_horizon,
+            quantiles=list(training_settings.quantiles),
+            feature_columns=list(DEFAULT_QUANTILE_FEATURE_COLUMNS),
+            model_params=None,
+        )
+
+# =========================
+# Target preparation
+# =========================
+
+
+def get_default_quantile_model_config() -> QuantileModelConfig:
+    """Build the default quantile-model configuration from project settings."""
+    settings = get_default_settings()
+    return QuantileModelConfig.from_training_settings(settings.training)
+
+def train_quantile_models_from_config(
+    train_df: pd.DataFrame,
+    test_df: pd.DataFrame,
+    config: QuantileModelConfig | None = None,
+) -> tuple[list[QuantileModelResults], dict[float, GradientBoostingRegressor], list[str]]:
+    """
+    Train quantile models using a QuantileModelConfig object.
+    """
+    config = get_default_quantile_model_config() if config is None else config
+
+    return train_quantile_models(
+        train_df=train_df,
+        test_df=test_df,
+        quantiles=config.resolved_quantiles(),
+        target_column=config.target_column,
+        horizon=config.horizon,
+        feature_columns=config.resolved_feature_columns(),
+        model_params=config.model_params,
+    )
 
     results_list: list[QuantileModelResults] = []
     models: dict[float, GradientBoostingRegressor] = {}
@@ -393,7 +463,10 @@ if __name__ == "__main__":
     train_example = example_df.iloc[:90].copy()
     test_example = example_df.iloc[90:].copy()
 
-    results_list, _, _ = train_quantile_models(train_example, test_example, quantiles=[0.5, 0.9])
+    config = get_default_quantile_model_config()
+    print(config)
+
+    results_list, _, _ = train_quantile_models_from_config(train_example, test_example, config=config)
     summary_df = summarize_quantile_results(results_list)
     combined_df = combine_quantile_predictions(results_list)
 

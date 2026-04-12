@@ -16,6 +16,23 @@ from dataclasses import dataclass
 
 import pandas as pd
 
+from src.config.constants import (
+    ALLOW_SHIFT_ON_HOLIDAYS,
+    ALLOW_SHIFT_ON_WEEKENDS,
+    DEFAULT_FUTURE_COLUMN,
+    DEFAULT_HOLIDAY_COLUMN,
+    DEFAULT_Q50_COLUMN,
+    DEFAULT_Q90_COLUMN,
+    DEFAULT_SPOT_COLUMN,
+    DEFAULT_WEEKEND_COLUMN,
+    MIN_ABS_RISK_PREMIUM_TO_HEDGE,
+    MIN_ABS_RISK_PREMIUM_TO_SHIFT,
+    MIN_REL_RISK_PREMIUM_TO_HEDGE,
+    MIN_REL_RISK_PREMIUM_TO_SHIFT,
+)
+from src.config.settings import PolicySettings, get_default_settings
+from src.decision.action_rules import ActionRuleConfig, apply_action_rules
+
 
 SUPPORTED_ACTIONS = {
     "do_nothing",
@@ -23,21 +40,15 @@ SUPPORTED_ACTIONS = {
     "shift_production",
 }
 
-DEFAULT_Q50_COLUMN = "q_0.5"
-DEFAULT_Q90_COLUMN = "q_0.9"
-DEFAULT_SPOT_COLUMN = "Spot_Price_SPEL"
-DEFAULT_FUTURE_COLUMN = "Future_M1_Price"
-DEFAULT_HOLIDAY_COLUMN = "Is_national_holiday"
-DEFAULT_WEEKEND_COLUMN = "is_weekend"
-
 
 class HeuristicPolicyError(Exception):
     """Raised when the heuristic decision policy cannot be applied safely."""
 
 
+
 @dataclass
 class PolicyConfig:
-    """Configuration container for the heuristic policy rules."""
+    """Configuration container for the heuristic policy."""
 
     q50_column: str = DEFAULT_Q50_COLUMN
     q90_column: str = DEFAULT_Q90_COLUMN
@@ -47,17 +58,34 @@ class PolicyConfig:
     weekend_column: str = DEFAULT_WEEKEND_COLUMN
 
     # Risk thresholds
-    min_abs_risk_premium_to_hedge: float = 8.0
-    min_rel_risk_premium_to_hedge: float = 0.10
+    min_abs_risk_premium_to_hedge: float = MIN_ABS_RISK_PREMIUM_TO_HEDGE
+    min_rel_risk_premium_to_hedge: float = MIN_REL_RISK_PREMIUM_TO_HEDGE
 
     # Production-shift thresholds
-    min_abs_risk_premium_to_shift: float = 12.0
-    min_rel_risk_premium_to_shift: float = 0.15
+    min_abs_risk_premium_to_shift: float = MIN_ABS_RISK_PREMIUM_TO_SHIFT
+    min_rel_risk_premium_to_shift: float = MIN_REL_RISK_PREMIUM_TO_SHIFT
 
     # Operational flexibility settings
-    allow_shift_on_weekends: bool = True
-    allow_shift_on_holidays: bool = True
+    allow_shift_on_weekends: bool = ALLOW_SHIFT_ON_WEEKENDS
+    allow_shift_on_holidays: bool = ALLOW_SHIFT_ON_HOLIDAYS
 
+    @classmethod
+    def from_policy_settings(cls, policy_settings: PolicySettings) -> "PolicyConfig":
+        """Build policy configuration from centralized project settings."""
+        return cls(
+            min_abs_risk_premium_to_hedge=policy_settings.min_abs_risk_premium_to_hedge,
+            min_rel_risk_premium_to_hedge=policy_settings.min_rel_risk_premium_to_hedge,
+            min_abs_risk_premium_to_shift=policy_settings.min_abs_risk_premium_to_shift,
+            min_rel_risk_premium_to_shift=policy_settings.min_rel_risk_premium_to_shift,
+            allow_shift_on_weekends=policy_settings.allow_shift_on_weekends,
+            allow_shift_on_holidays=policy_settings.allow_shift_on_holidays,
+        )
+# Helper to build default policy config from settings
+
+def get_default_policy_config() -> PolicyConfig:
+    """Build the default heuristic-policy configuration from project settings."""
+    settings = get_default_settings()
+    return PolicyConfig.from_policy_settings(settings.policy)
 
 # =========================
 # Validation helpers
@@ -115,6 +143,9 @@ def _build_policy_signals(df: pd.DataFrame, config: PolicyConfig) -> pd.DataFram
     - q50 = central forecast for tomorrow's spot price
     - q90 = upper-tail risk forecast for tomorrow's spot price
     - future price = hedge alternative available today
+
+    These engineered signals are later passed to the modular rule layer in
+    `action_rules.py`.
     """
     policy_df = df.copy()
 
@@ -172,54 +203,6 @@ def _build_policy_signals(df: pd.DataFrame, config: PolicyConfig) -> pd.DataFram
 
 
 # =========================
-# Row-wise policy logic
-# =========================
-
-def _decide_action_for_row(row: pd.Series, config: PolicyConfig) -> tuple[str, str]:
-    """Apply transparent business rules to one row of signals."""
-    tail_vs_future_abs = row.get("tail_vs_future_abs")
-    tail_vs_future_rel = row.get("tail_vs_future_rel")
-    tail_vs_central_abs = row.get("tail_vs_central_abs")
-    tail_vs_central_rel = row.get("tail_vs_central_rel")
-    is_flexible_day = row.get("is_flexible_day", 0)
-
-    # If key risk signals are missing, default to no action.
-    if pd.isna(tail_vs_future_abs) or pd.isna(tail_vs_future_rel):
-        return "do_nothing", "Missing forecast or futures information."
-
-    # Rule 1: hedge when the upper-tail forecast is materially above the current M1 future price.
-    if (
-        tail_vs_future_abs >= config.min_abs_risk_premium_to_hedge
-        and tail_vs_future_rel >= config.min_rel_risk_premium_to_hedge
-    ):
-        return (
-            "buy_m1_future",
-            (
-                "Tail-risk forecast is materially above the current M1 futures price, "
-                "so locking in costs is preferred."
-            ),
-        )
-
-    # Rule 2: shift production when risk is very high and the day is operationally flexible.
-    if (
-        not pd.isna(tail_vs_central_abs)
-        and not pd.isna(tail_vs_central_rel)
-        and tail_vs_central_abs >= config.min_abs_risk_premium_to_shift
-        and tail_vs_central_rel >= config.min_rel_risk_premium_to_shift
-        and int(is_flexible_day) == 1
-    ):
-        return (
-            "shift_production",
-            (
-                "Upper-tail risk is substantially above the central forecast and the day is flexible, "
-                "so postponing production is recommended."
-            ),
-        )
-
-    return "do_nothing", "No rule was triggered: keep the current procurement plan."
-
-
-# =========================
 # Public API
 # =========================
 
@@ -235,19 +218,26 @@ def apply_heuristic_policy(
     - recommended action
     - human-readable explanation
     """
-    config = PolicyConfig() if config is None else config
+    config = get_default_policy_config() if config is None else config
 
     policy_df = _validate_input_dataframe(df)
     _validate_required_columns(policy_df, config)
     policy_df = _build_policy_signals(policy_df, config)
 
-    decisions = policy_df.apply(
-        lambda row: _decide_action_for_row(row, config),
-        axis=1,
+    # Map policy settings into the modular action-rule layer
+    action_rule_config = ActionRuleConfig.from_policy_settings(
+        PolicySettings(
+            min_abs_risk_premium_to_hedge=config.min_abs_risk_premium_to_hedge,
+            min_rel_risk_premium_to_hedge=config.min_rel_risk_premium_to_hedge,
+            min_abs_risk_premium_to_shift=config.min_abs_risk_premium_to_shift,
+            min_rel_risk_premium_to_shift=config.min_rel_risk_premium_to_shift,
+            allow_shift_on_weekends=config.allow_shift_on_weekends,
+            allow_shift_on_holidays=config.allow_shift_on_holidays,
+        )
     )
 
-    policy_df["recommended_action"] = [decision[0] for decision in decisions]
-    policy_df["decision_reason"] = [decision[1] for decision in decisions]
+    # Apply modular action rules
+    policy_df = apply_action_rules(policy_df, config=action_rule_config)
 
     invalid_actions = set(policy_df["recommended_action"].dropna().unique()) - SUPPORTED_ACTIONS
     if invalid_actions:
@@ -292,7 +282,10 @@ if __name__ == "__main__":
         }
     )
 
-    policy_output = apply_heuristic_policy(example_df)
+    config = get_default_policy_config()
+    print(config)
+
+    policy_output = apply_heuristic_policy(example_df, config=config)
     action_summary = summarize_policy_actions(policy_output)
 
     print(policy_output[[

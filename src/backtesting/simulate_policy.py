@@ -12,11 +12,19 @@ from dataclasses import dataclass
 
 import pandas as pd
 
+from src.config.constants import (
+    DEFAULT_DAILY_VOLUME,
+    DEFAULT_FUTURE_COLUMN,
+    DEFAULT_HEDGE_RATIO_ON_BUY_FUTURE,
+    DEFAULT_SHIFT_FRACTION,
+    DEFAULT_SHIFT_PENALTY_PER_MWH,
+    DEFAULT_SPOT_COLUMN,
+)
+from src.config.settings import PolicySettings, SimulationSettings, TrainingSettings, get_default_settings
+
 
 DEFAULT_ACTION_COLUMN = "recommended_action"
 DEFAULT_REASON_COLUMN = "decision_reason"
-DEFAULT_SPOT_COLUMN = "Spot_Price_SPEL"
-DEFAULT_FUTURE_COLUMN = "Future_M1_Price"
 DEFAULT_VOLUME_COLUMN = "daily_energy_mwh"
 
 SUPPORTED_POLICY_ACTIONS = {
@@ -39,12 +47,42 @@ class PolicySimulationConfig:
     spot_column: str = DEFAULT_SPOT_COLUMN
     future_column: str = DEFAULT_FUTURE_COLUMN
     volume_column: str = DEFAULT_VOLUME_COLUMN
-    default_daily_volume: float = 1.0
+    default_daily_volume: float = DEFAULT_DAILY_VOLUME
 
     # Economic assumptions
-    hedge_ratio_on_buy_future: float = 1.0
-    shift_fraction: float = 1.0
-    shift_penalty_per_mwh: float = 0.0
+    hedge_ratio_on_buy_future: float = DEFAULT_HEDGE_RATIO_ON_BUY_FUTURE
+    shift_fraction: float = DEFAULT_SHIFT_FRACTION
+    shift_penalty_per_mwh: float = DEFAULT_SHIFT_PENALTY_PER_MWH
+
+    @classmethod
+    def from_project_settings(
+        cls,
+        training_settings: TrainingSettings,
+        simulation_settings: SimulationSettings,
+        policy_settings: PolicySettings,
+    ) -> "PolicySimulationConfig":
+        """Build policy simulation config from centralized project settings."""
+        return cls(
+            action_column=DEFAULT_ACTION_COLUMN,
+            reason_column=DEFAULT_REASON_COLUMN,
+            spot_column=training_settings.target_column,
+            future_column=DEFAULT_FUTURE_COLUMN,
+            volume_column=DEFAULT_VOLUME_COLUMN,
+            default_daily_volume=simulation_settings.default_daily_volume,
+            hedge_ratio_on_buy_future=simulation_settings.hedge_ratio_on_buy_future,
+            shift_fraction=simulation_settings.shift_fraction,
+            shift_penalty_per_mwh=simulation_settings.shift_penalty_per_mwh,
+        )
+
+
+def get_default_policy_simulation_config() -> PolicySimulationConfig:
+    """Build the default policy simulation config from project settings."""
+    settings = get_default_settings()
+    return PolicySimulationConfig.from_project_settings(
+        settings.training,
+        settings.simulation,
+        settings.policy,
+    )
 
 
 # =========================
@@ -226,7 +264,7 @@ def simulate_policy_strategy(
     The returned dataframe preserves the original rows and appends simulated
     cost components for transparent backtesting.
     """
-    config = PolicySimulationConfig() if config is None else config
+    config = get_default_policy_simulation_config() if config is None else config
 
     simulation_df = _validate_input_dataframe(df, config)
     simulation_df = _ensure_volume_column(simulation_df, config)
@@ -311,13 +349,12 @@ if __name__ == "__main__":
         }
     )
 
+    config = get_default_policy_simulation_config()
+    print(config)
+
     simulated_df = simulate_policy_strategy(
         example_df,
-        config=PolicySimulationConfig(
-            hedge_ratio_on_buy_future=1.0,
-            shift_fraction=1.0,
-            shift_penalty_per_mwh=2.0,
-        ),
+        config=config,
     )
 
     print(
