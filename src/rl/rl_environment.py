@@ -196,10 +196,11 @@ class EnergyRLEnvironment:
 
         if self.current_step >= len(self.df):
             self.done = True
+            next_state = {}
+        else:
+            next_state = self._get_state()
 
-        next_state = self._get_state()
-
-        return next_state, reward, self.done, {}
+        return next_state, reward, self.done, info
 
     # =========================
     # State
