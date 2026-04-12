@@ -55,7 +55,7 @@ class QLearningAgentConfig(RLAgentConfig):
 
     epsilon_decay: float = 0.995
     epsilon_min: float = 0.01
-    state_rounding_digits: int = 1
+    state_rounding_digits: int = 0
 
     @classmethod
     def from_settings(cls, settings: RLSettings) -> "QLearningAgentConfig":
@@ -249,8 +249,9 @@ class QLearningAgent(BaseRLAgent):
     Minimal tabular Q-learning skeleton.
 
     This implementation is intentionally lightweight and mainly serves as a
-    future-ready extension point for the project. It discretizes continuous
-    states by rounding values and stores Q-values in a Python dictionary.
+    future-ready extension point for the project. It compresses the raw state
+    into a smaller set of decision-relevant signals and discretizes them into
+    coarse bins before storing Q-values in a Python dictionary.
     """
 
     def __init__(self, config: QLearningAgentConfig | None = None):
@@ -259,17 +260,60 @@ class QLearningAgent(BaseRLAgent):
         self.q_table: dict[tuple[tuple[str, float], ...], dict[int, float]] = {}
 
     def _state_to_key(self, state: dict[str, Any]) -> tuple[tuple[str, float], ...]:
+        """
+        Convert a raw environment state into a compact tabular-RL key.
+
+        We intentionally keep only the most decision-relevant signals:
+        - tail_vs_future_abs
+        - tail_vs_central_abs
+        - spot_minus_future
+        - is_weekend
+        - is_holiday
+
+        Continuous values are discretized into coarse bins so that similar days
+        map to the same tabular state more often.
+        """
         if not state:
             return tuple()
 
-        key_items: list[tuple[str, float]] = []
-        for k, v in sorted(state.items()):
+        def _to_float(key: str, value: Any) -> float:
             try:
-                value = round(float(v), self.q_config.state_rounding_digits)
+                return float(value)
             except (TypeError, ValueError) as exc:
-                raise RLAgentError(f"State value for key '{k}' is not numeric: {v}") from exc
-            key_items.append((k, value))
-        return tuple(key_items)
+                raise RLAgentError(
+                    f"State value for key '{key}' is not numeric: {value}"
+                ) from exc
+
+        def _bin_value(value: float, step: float) -> float:
+            return round(value / step) * step
+
+        forecast_central = _to_float("forecast_central", state.get("forecast_central", 0.0))
+        forecast_tail = _to_float("forecast_tail", state.get("forecast_tail", 0.0))
+        current_m1_future = _to_float("current_m1_future", state.get("current_m1_future", 0.0))
+        current_spot = _to_float("current_spot", state.get("current_spot", forecast_central))
+
+        tail_vs_future_abs = _to_float(
+            "tail_vs_future_abs",
+            state.get("tail_vs_future_abs", forecast_tail - current_m1_future),
+        )
+        tail_vs_central_abs = _to_float(
+            "tail_vs_central_abs",
+            state.get("tail_vs_central_abs", forecast_tail - forecast_central),
+        )
+        spot_minus_future = current_spot - current_m1_future
+
+        is_weekend = 1.0 if _to_float("is_weekend", state.get("is_weekend", 0.0)) >= 0.5 else 0.0
+        is_holiday = 1.0 if _to_float("is_holiday", state.get("is_holiday", 0.0)) >= 0.5 else 0.0
+
+        compact_state = {
+            "tail_vs_future_abs": _bin_value(tail_vs_future_abs, 5.0),
+            "tail_vs_central_abs": _bin_value(tail_vs_central_abs, 5.0),
+            "spot_minus_future": _bin_value(spot_minus_future, 5.0),
+            "is_weekend": is_weekend,
+            "is_holiday": is_holiday,
+        }
+
+        return tuple(sorted(compact_state.items()))
 
     def _ensure_state(self, state_key: tuple[tuple[str, float], ...]) -> None:
         if state_key not in self.q_table:
