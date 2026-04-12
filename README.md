@@ -231,16 +231,35 @@ Future improvements may include:
 │   │
 │   └── outputs/
 │       ├── backtests/
+│       │   ├── extreme_days_vs_spot_only.csv
+│       │   ├── quantile_coverage_summary.csv
+│       │   ├── quantile_interval_summary.csv
+│       │   ├── quantile_model_summary.csv
+│       │   ├── quantile_upper_tail_exceedance_summary.csv
+│       │   ├── resilience_summary.csv
+│       │   ├── resilience_vs_spot_only.csv
+│       │   ├── strategy_daily_comparison.csv
+│       │   ├── strategy_summary_table.csv
+│       │   ├── strategy_summary_vs_spot_only.csv
 │       │   ├── validation_heuristic_policy.csv
+│       │   ├── validation_rl_policy.csv
 │       │   ├── validation_spot_only.csv
 │       │   └── validation_static_hedge.csv
+│       │
 │       ├── policies/
-│       │   └── validation_policy_decisions.csv
+│       │   ├── validation_policy_decisions.csv
+│       │   └── validation_rl_policy_decisions.csv
+│       │
 │       └── figures/
 │           ├── cumulative_costs_by_strategy.png
 │           ├── daily_costs_by_strategy.png
 │           ├── daily_savings_vs_spot_only.png
 │           ├── heuristic_policy_action_timeline.png
+│           ├── rl_policy_action_timeline.png
+│           ├── policy_action_frequency.png
+│           ├── policy_action_share.png
+│           ├── policy_actions_timeline.png
+│           ├── policy_actions_vs_tail_risk.png
 │           ├── quantile_band_q50_q90.png
 │           ├── quantile_error_q90.png
 │           ├── quantile_forecasts.png
