@@ -23,13 +23,19 @@ from __future__ import annotations
 
 import pandas as pd
 
-from src.config.constants import DEFAULT_QUANTILES, DEFAULT_REFERENCE_STRATEGY
+from src.config.constants import (
+    DEFAULT_QUANTILES,
+    DEFAULT_REFERENCE_STRATEGY,
+    STRATEGY_RL_POLICY,
+)
 from src.config.paths import BACKTESTS_DIR, FIGURES_DIR, POLICIES_DIR, PROCESSED_DATA_DIR
 from src.utils.logger import get_logger
 from src.models.quantile_models import train_quantile_models, summarize_quantile_results
 from src.models.evaluate_model import build_quantile_diagnostics_report
 from src.decision.policy_inputs import prepare_policy_inputs
 from src.decision.heuristic_policy import apply_heuristic_policy
+from src.decision.rl_policy import apply_rl_policy
+from src.rl.train_rl_agent import train_q_learning_agent
 from src.backtesting.simulate_baseline import (
     BaselineSimulationConfig,
     simulate_spot_only_baseline,
@@ -39,6 +45,7 @@ from src.backtesting.simulate_policy import (
     PolicySimulationConfig,
     simulate_policy_strategy,
 )
+from src.backtesting.simulate_rl_policy import simulate_rl_policy_strategy
 from src.backtesting.compare_strategies import build_strategy_comparison_report
 from src.backtesting.resilience_metrics import build_resilience_report
 from src.visualization.plot_quantiles import (
@@ -60,7 +67,10 @@ VALIDATION_FEATURES_FILE = PROCESSED_DATA_DIR / "validation_features.csv"
 POLICY_DECISIONS_OUTPUT_FILE = POLICIES_DIR / "validation_policy_decisions.csv"
 SPOT_ONLY_OUTPUT_FILE = BACKTESTS_DIR / "validation_spot_only.csv"
 STATIC_HEDGE_OUTPUT_FILE = BACKTESTS_DIR / "validation_static_hedge.csv"
+
 HEURISTIC_POLICY_OUTPUT_FILE = BACKTESTS_DIR / "validation_heuristic_policy.csv"
+RL_POLICY_DECISIONS_OUTPUT_FILE = POLICIES_DIR / "validation_rl_policy_decisions.csv"
+RL_POLICY_OUTPUT_FILE = BACKTESTS_DIR / "validation_rl_policy.csv"
 
 QUANTILE_SUMMARY_OUTPUT_FILE = BACKTESTS_DIR / "quantile_model_summary.csv"
 QUANTILE_COVERAGE_OUTPUT_FILE = BACKTESTS_DIR / "quantile_coverage_summary.csv"
@@ -82,6 +92,7 @@ CUMULATIVE_COSTS_FIGURE_FILE = FIGURES_DIR / "cumulative_costs_by_strategy.png"
 DAILY_SAVINGS_FIGURE_FILE = FIGURES_DIR / "daily_savings_vs_spot_only.png"
 TOTAL_COST_BAR_FIGURE_FILE = FIGURES_DIR / "total_cost_bar_chart.png"
 ACTION_TIMELINE_FIGURE_FILE = FIGURES_DIR / "heuristic_policy_action_timeline.png"
+RL_ACTION_TIMELINE_FIGURE_FILE = FIGURES_DIR / "rl_policy_action_timeline.png"
 
 
 class BacktestPipelineError(Exception):
@@ -165,6 +176,19 @@ def run_backtest_pipeline() -> dict[str, pd.DataFrame]:
     decisions_df = apply_heuristic_policy(policy_inputs_df)
     logger.info(f"Applied heuristic policy: {decisions_df.shape}")
 
+    rl_training_artifacts = train_q_learning_agent(policy_inputs_df)
+    logger.info(
+        f"Trained RL agent with {len(rl_training_artifacts.agent.q_table)} learned states."
+    )
+
+    rl_policy_artifacts = apply_rl_policy(
+        agent=rl_training_artifacts.agent,
+        policy_inputs_df=policy_inputs_df,
+        include_q_values=True,
+    )
+    rl_decisions_df = rl_policy_artifacts.decisions_df.copy()
+    logger.info(f"Applied RL policy: {rl_decisions_df.shape}")
+
     # =========================
     # 5. Align validation subset
     # =========================
@@ -176,6 +200,8 @@ def run_backtest_pipeline() -> dict[str, pd.DataFrame]:
     val_aligned = val.loc[policy_inputs_df["source_index"]].copy()
     val_aligned = val_aligned.sort_index().reset_index(drop=True)
     decisions_df = decisions_df.sort_values("source_index").reset_index(drop=True)
+
+    rl_decisions_df = rl_decisions_df.sort_values("row_id").reset_index(drop=True)
 
     # =========================
     # 6. Simulate strategies
@@ -198,10 +224,17 @@ def run_backtest_pipeline() -> dict[str, pd.DataFrame]:
         ),
     )
 
-    simulation_dfs = [spot_only_df, static_hedge_df, policy_sim_df]
+    rl_policy_input_df = val_aligned.copy().reset_index(drop=True)
+    rl_policy_input_df["recommended_action"] = rl_decisions_df["recommended_action"].values
+    rl_policy_input_df["action_source"] = STRATEGY_RL_POLICY
+
+    rl_policy_sim_df = simulate_rl_policy_strategy(rl_policy_input_df)
+
+    simulation_dfs = [spot_only_df, static_hedge_df, policy_sim_df, rl_policy_sim_df]
     logger.info(f"Spot-only simulation shape: {spot_only_df.shape}")
     logger.info(f"Static-hedge simulation shape: {static_hedge_df.shape}")
     logger.info(f"Heuristic-policy simulation shape: {policy_sim_df.shape}")
+    logger.info(f"RL-policy simulation shape: {rl_policy_sim_df.shape}")
 
     # =========================
     # 7. Comparison + resilience
@@ -221,10 +254,12 @@ def run_backtest_pipeline() -> dict[str, pd.DataFrame]:
     # 8. Save tables
     # =========================
     decisions_df.to_csv(POLICY_DECISIONS_OUTPUT_FILE, index=False)
+    rl_decisions_df.to_csv(RL_POLICY_DECISIONS_OUTPUT_FILE, index=False)
 
     spot_only_df.to_csv(SPOT_ONLY_OUTPUT_FILE, index=False)
     static_hedge_df.to_csv(STATIC_HEDGE_OUTPUT_FILE, index=False)
     policy_sim_df.to_csv(HEURISTIC_POLICY_OUTPUT_FILE, index=False)
+    rl_policy_sim_df.to_csv(RL_POLICY_OUTPUT_FILE, index=False)
 
     quantile_summary.to_csv(QUANTILE_SUMMARY_OUTPUT_FILE, index=False)
     quantile_diagnostics["coverage_summary"].to_csv(
@@ -313,6 +348,13 @@ def run_backtest_pipeline() -> dict[str, pd.DataFrame]:
         show=False,
     )
 
+    plot_action_timeline(
+        rl_policy_sim_df,
+        title="RL Policy Actions Over Time",
+        save_path=str(RL_ACTION_TIMELINE_FIGURE_FILE),
+        show=False,
+    )
+
     logger.info(f"Saved policy decisions to {POLICY_DECISIONS_OUTPUT_FILE}")
     logger.info(f"Saved backtest tables to {BACKTESTS_DIR}")
     logger.info(f"Saved figures to {FIGURES_DIR}")
@@ -327,6 +369,8 @@ def run_backtest_pipeline() -> dict[str, pd.DataFrame]:
         "strategy_summary_vs_reference": comparison_report["summary_vs_reference"],
         "resilience_summary": resilience_report["resilience_summary"],
         "resilience_vs_reference": resilience_report["resilience_vs_reference"],
+        "rl_policy_decisions": rl_decisions_df,
+        "rl_rewards_summary": rl_training_artifacts.rewards_summary_df,
     }
 
 

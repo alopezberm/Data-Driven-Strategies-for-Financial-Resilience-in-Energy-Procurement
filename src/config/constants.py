@@ -113,6 +113,7 @@ ACTION_SHIFT_PRODUCTION = ACTIONS[2]
 STRATEGY_SPOT_ONLY = "spot_only"
 STRATEGY_STATIC_HEDGE = "static_hedge"
 STRATEGY_HEURISTIC_POLICY = "heuristic_policy"
+STRATEGY_RL_POLICY = "rl_policy"
 
 
 # =========================

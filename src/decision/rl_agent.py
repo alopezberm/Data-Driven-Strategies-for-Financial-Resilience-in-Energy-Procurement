@@ -13,25 +13,25 @@ from dataclasses import dataclass
 from typing import Any
 import random
 
-from src.config.constants import ACTIONS
+from src.config.constants import (
+    ACTIONS,
+    ACTION_BUY_M1_FUTURE,
+    ACTION_DO_NOTHING,
+    ACTION_SHIFT_PRODUCTION,
+)
 from src.config.settings import RLSettings, get_default_settings
-from src.decision.rl_environment import EnergyRLEnvironment
+from src.rl.rl_environment import EnergyRLEnvironment
 
 
 class RLAgentError(Exception):
     """Raised when an RL agent cannot act or train safely."""
 
 
-ACTION_DO_NOTHING = 0
-ACTION_BUY_M1_FUTURE = 1
-ACTION_SHIFT_PRODUCTION = 2
-
-
 @dataclass
 class RLAgentConfig:
     """Configuration shared by lightweight RL agents."""
 
-    action_space: tuple[int, ...] = (ACTION_DO_NOTHING, ACTION_BUY_M1_FUTURE, ACTION_SHIFT_PRODUCTION)
+    action_space: tuple[int, ...] = (0, 1, 2)
     random_seed: int = 42
     epsilon: float = 0.1
     learning_rate: float = 0.1
@@ -41,7 +41,7 @@ class RLAgentConfig:
     def from_settings(cls, settings: RLSettings) -> "RLAgentConfig":
         """Build an RL agent config from centralized project settings."""
         return cls(
-            action_space=(ACTION_DO_NOTHING, ACTION_BUY_M1_FUTURE, ACTION_SHIFT_PRODUCTION),
+            action_space=(0, 1, 2),
             random_seed=42,
             epsilon=settings.epsilon,
             learning_rate=settings.learning_rate,
@@ -61,7 +61,7 @@ class QLearningAgentConfig(RLAgentConfig):
     def from_settings(cls, settings: RLSettings) -> "QLearningAgentConfig":
         """Build a Q-learning config from centralized project settings."""
         return cls(
-            action_space=(ACTION_DO_NOTHING, ACTION_BUY_M1_FUTURE, ACTION_SHIFT_PRODUCTION),
+            action_space=(0, 1, 2),
             random_seed=42,
             epsilon=settings.epsilon,
             learning_rate=settings.learning_rate,
@@ -88,10 +88,22 @@ def _get_agent_config(config: RLAgentConfig | None) -> RLAgentConfig:
 
 def _validate_action_catalog() -> None:
     """Validate that the centralized ACTIONS catalog matches the RL action encoding."""
-    expected_action_labels = {"do_nothing", "buy_m1_future", "shift_production"}
+    expected_action_labels = {
+        ACTION_DO_NOTHING,
+        ACTION_BUY_M1_FUTURE,
+        ACTION_SHIFT_PRODUCTION,
+    }
     if len(ACTIONS) < 3 or set(ACTIONS[:3]) != expected_action_labels:
         raise RLAgentError(
             "Centralized ACTIONS constant must contain the expected RL action labels in the first three positions."
+        )
+
+
+def _validate_encoded_action(action: int, action_space: tuple[int, ...]) -> None:
+    """Validate that a chosen encoded action belongs to the configured action space."""
+    if action not in action_space:
+        raise RLAgentError(
+            f"Unsupported encoded action '{action}'. Expected one of: {list(action_space)}"
         )
 
 
@@ -153,6 +165,7 @@ class BaseRLAgent:
 
             while not done:
                 action = self.select_action(state)
+                _validate_encoded_action(action, self.config.action_space)
                 next_state, reward, done, _ = env.step(action)
                 self.observe(state, action, reward, next_state, done)
 
@@ -206,25 +219,29 @@ class HeuristicRLAgent(BaseRLAgent):
         )
 
     def select_action(self, state: dict[str, Any]) -> int:
-        required_keys = {"q50", "q90", "future_price"}
+        required_keys = {"forecast_central", "forecast_tail", "current_m1_future"}
         missing_keys = required_keys - set(state.keys())
         if missing_keys:
             raise RLAgentError(
                 f"State is missing required keys for HeuristicRLAgent: {sorted(missing_keys)}"
             )
 
-        q50 = float(state["q50"])
-        q90 = float(state["q90"])
-        future_price = float(state["future_price"])
+        forecast_central = float(state["forecast_central"])
+        forecast_tail = float(state["forecast_tail"])
+        future_price = float(state["current_m1_future"])
 
-        tail_vs_future = q90 - future_price
-        tail_vs_central = q90 - q50
+        tail_vs_future = float(
+            state.get("tail_vs_future_abs", forecast_tail - future_price)
+        )
+        tail_vs_central = float(
+            state.get("tail_vs_central_abs", forecast_tail - forecast_central)
+        )
 
         if tail_vs_future >= self.hedge_threshold:
-            return ACTION_BUY_M1_FUTURE
+            return 1
         if tail_vs_central >= self.shift_threshold:
-            return ACTION_SHIFT_PRODUCTION
-        return ACTION_DO_NOTHING
+            return 2
+        return 0
 
 
 class QLearningAgent(BaseRLAgent):
@@ -258,16 +275,25 @@ class QLearningAgent(BaseRLAgent):
         if state_key not in self.q_table:
             self.q_table[state_key] = {action: 0.0 for action in self.config.action_space}
 
+    def get_action_values(self, state: dict[str, Any]) -> dict[int, float]:
+        """Return the current Q-values for a given state."""
+        state_key = self._state_to_key(state)
+        self._ensure_state(state_key)
+        return dict(self.q_table[state_key])
+
     def select_action(self, state: dict[str, Any]) -> int:
         state_key = self._state_to_key(state)
         self._ensure_state(state_key)
 
         if self._rng.random() < self.q_config.epsilon:
-            return self._rng.choice(self.config.action_space)
+            action = self._rng.choice(self.config.action_space)
+            _validate_encoded_action(action, self.config.action_space)
+            return action
 
         action_values = self.q_table[state_key]
-        best_action = max(action_values, key=action_values.get)
-        return int(best_action)
+        best_action = int(max(action_values, key=action_values.get))
+        _validate_encoded_action(best_action, self.config.action_space)
+        return best_action
 
     def observe(
         self,
@@ -277,6 +303,7 @@ class QLearningAgent(BaseRLAgent):
         next_state: dict[str, Any],
         done: bool,
     ) -> None:
+        _validate_encoded_action(action, self.config.action_space)
         state_key = self._state_to_key(state)
         next_state_key = self._state_to_key(next_state)
 
@@ -316,6 +343,11 @@ if __name__ == "__main__":
             Q50_COLUMN: [50, 55, 60, 58],
             Q90_COLUMN: [60, 68, 78, 66],
             PRIMARY_FUTURE_COLUMN: [52, 57, 63, 60],
+            "Spot_Price_SPEL": [51, 58, 66, 61],
+            "tail_vs_future_abs": [8, 11, 15, 6],
+            "tail_vs_central_abs": [10, 13, 18, 8],
+            "is_weekend": [0, 0, 1, 0],
+            "Is_national_holiday": [0, 0, 0, 0],
         }
     )
 
