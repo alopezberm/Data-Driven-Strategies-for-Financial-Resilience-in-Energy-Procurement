@@ -180,6 +180,18 @@ class EnergyRLEnvironment:
 
         reward = self._compute_reward(current_row, action)
 
+        row = self.df.iloc[self.current_step]
+        
+        info = {
+            "step": self.current_step,
+            "action": action,
+            "forecast_central": float(row[self.config.q50_column]),
+            "forecast_tail": float(row[self.config.q90_column]),
+            "current_m1_future": float(row[self.config.future_column]),
+        }
+        if self.config.spot_column in row.index and pd.notna(row[self.config.spot_column]):
+            info["current_spot"] = float(row[self.config.spot_column])
+
         self.current_step += 1
 
         if self.current_step >= len(self.df):
