@@ -116,14 +116,15 @@ class ExplainabilitySettings:
 class RLSettings:
     """Settings used for lightweight RL environment and agent scaffolding."""
 
-    risk_aversion: float = 1.0
-    hedge_cost_penalty: float = 0.1
-    epsilon: float = 0.1
-    learning_rate: float = 0.1
+    risk_aversion: float = 0.0
+    hedge_cost_penalty: float = 0.0
+    episodes: int = 1000
+    epsilon: float = 0.25
+    learning_rate: float = 0.10
     discount_factor: float = 0.95
-    epsilon_decay: float = 0.995
-    epsilon_min: float = 0.01
-    state_rounding_digits: int = 1
+    epsilon_decay: float = 0.999
+    epsilon_min: float = 0.05
+    state_rounding_digits: int = 0
     heuristic_hedge_threshold: float = 5.0
     heuristic_shift_threshold: float = 2.0
 
