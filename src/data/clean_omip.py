@@ -98,7 +98,7 @@ def _validate_clean_dataframe(df: pd.DataFrame) -> None:
 
 
 # =========================
-# Dataframe-level cleaning function
+# Public API
 # =========================
 
 def clean_omip_dataframe(df: pd.DataFrame) -> pd.DataFrame:
@@ -118,11 +118,6 @@ def clean_omip_dataframe(df: pd.DataFrame) -> pd.DataFrame:
     cleaned_df = _drop_duplicate_dates(cleaned_df)
     _validate_clean_dataframe(cleaned_df)
     return cleaned_df
-
-
-# =========================
-# Public API
-# =========================
 
 def clean_omip_data(save: bool = True) -> pd.DataFrame:
     """
