@@ -124,6 +124,20 @@ def build_feature_matrix(
     """
     df = _validate_input_dataframe(df)
 
+    # BUSINESS LOGIC
+
+    # 1. Day-1 Backfilling (Initial Holidays in Futures Markets)
+    # Resolves initial NaN values to ensure Lags and Rolling Windows 
+    # maintain structural integrity and prevent data leakage.
+    future_cols = [col for col in df.columns if 'Future' in col]
+    df[future_cols] = df[future_cols].bfill()
+
+    # 2. Liquidity Pruning (Removing distal Open Interest due to extreme scarcity)
+    # Enhances model robustness by eliminating highly illiquid features 
+    # that could introduce noise during market disruptions.
+    illiquid_oi_cols = ['Future_M4_OpenInterest', 'Future_M5_OpenInterest', 'Future_M6_OpenInterest']
+    df = df.drop(columns=[col for col in illiquid_oi_cols if col in df.columns], errors='ignore')
+    
     if use_time_features:
         df = build_time_features(df)
 
