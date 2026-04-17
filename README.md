@@ -434,9 +434,7 @@ Future improvements may include:
 ## 👥 Authors
 
 DTU – MSc Business Analytics (Group 17)
-s242875 - Ignacio Ripoll González
-s253159 - Pablo Baurier Gasch
-s253272 - Alejandro López Bermejo
+| s242875 - Ignacio Ripoll González | s253159 - Pablo Baurier Gasch | s253272 - Alejandro López Bermejo
 
 ---
 
