@@ -1,1 +1,37 @@
 # Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# Virtual environments
+.venv/
+venv/
+env/
+
+# Jupyter
+.ipynb_checkpoints/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
+
+# Data outputs
+data/interim/
+data/processed/
+data/outputs/
+
+# Reports
+reports/technical_report/*.html
+reports/technical_report/*.pdf
+reports/executive_summary/*.pdf
+
+# Logs
+*.log
+
+# Environment files (optional)
+.env
