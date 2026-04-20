@@ -1,53 +1,53 @@
-Nombre;Capital;Comunidad autÛnoma;CODIGO;Nombre oficial;Poblacion;Superficie;%Poblacion;%Superficie2;Lat;Lon
-Madrid;Madrid;Comunidad de Madrid;28;Madrid;7 113 886;8 028;14.4802%;1.5866%;40.495;-3.717
-Barcelona;Barcelona;CataluÒa;8;Barcelona;5 959 941;7 728;12.1314%;1.5273%;41.730;1.9837
-Valencia;Valencia;Comunitat Valenciana;46;Valencia/ValËncia;2 763 996;10 807;5.6261%;2.1358%;39.370;-0.800
-Alicante;Alicante;Comunitat Valenciana;3;Alicante/Alacant;2 033 566;5 817;4.1393%;1.1496%;38.478;-0.568
-Sevilla;Sevilla;AndalucÌa;41;Sevilla;1 977 664;14 036;4.0255%;2.7740%;37.435;-5.682
-M·laga;M·laga;AndalucÌa;29;M·laga;1 791 183;7 306;3.6459%;1.4439%;36.813;-4.725
-Murcia;Murcia;RegiÛn de Murcia;30;Murcia;1 586 989;11 314;3.2303%;2.2360%;38.002;-1.485
-C·diz;C·diz;AndalucÌa;11;C·diz;1 261 420;7 440;2.5676%;1.4704%;36.553;-5.760
-Islas Baleares;Palma;Illes Balears;7;Balears, Illes;1 249 844;4 992;2.5440%;0.9866%;39.574;2.9124
-Las Palmas;Las Palmas de Gran Canaria;Canarias;35;Palmas, Las;1 171 547;4 066;2.3847%;0.8036%;28.365;-14.54
-Vizcaya;Bilbao;PaÌs Vasco;48;Bizkaia;1 167 233;2 217;2.3759%;0.4381%;43.238;-2.851
-La CoruÒa;La CoruÒa;Galicia;15;CoruÒa, A;1 135 623;7 950;2.3115%;1.5712%;43.126;-8.464
-Santa Cruz de Tenerife;Santa Cruz de Tenerife;Canarias;38;Santa Cruz de Tenerife;1 087 319;3 381;2.2132%;0.6682%;28.312;-17.01
-Asturias;Oviedo;Principado de Asturias;33;Asturias;1 015 128;10 604;2.0663%;2.0957%;43.292;-5.993
-Zaragoza;Zaragoza;AragÛn;50;Zaragoza;998 443;17 274;2.0323%;3.4139%;41.620;-1.064
-Pontevedra;Pontevedra;Galicia;36;Pontevedra;947 818;4 495;1.9293%;0.8884%;42.435;-8.461
-Granada;Granada;AndalucÌa;18;Granada;945 797;12 647;1.9252%;2.4994%;37.312;-3.267
-Tarragona;Tarragona;CataluÒa;43;Tarragona;875 530;6 303;1.7821%;1.2457%;41.087;0.8180
-Gerona;Gerona;CataluÒa;17;Girona;830 429;5 910;1.6903%;1.1680%;42.127;2.6733
-CÛrdoba;CÛrdoba;AndalucÌa;14;CÛrdoba;773 163;13 771;1.5738%;2.7216%;37.992;-4.809
-AlmerÌa;AlmerÌa;AndalucÌa;4;AlmerÌa;770 554;8 775;1.5685%;1.7342%;37.196;-2.344
-Toledo;Toledo;Castilla-La Mancha;45;Toledo;755 081;15 370;1.5370%;3.0376%;39.793;-4.148
-Guip˙zcoa;San Sebasti·n;PaÌs Vasco;20;Gipuzkoa;733 149;1 980;1.4923%;0.3913%;43.143;-2.194
-Navarra;Pamplona;Comunidad Foral de Navarra;31;Navarra;683 854;10 391;1.3920%;2.0536%;42.667;-1.646
-Badajoz;Badajoz;Extremadura;6;Badajoz;665 155;21 766;1.3539%;4.3016%;38.709;-6.141
-CastellÛn;CastellÛn de la Plana;Comunitat Valenciana;12;CastellÛn/CastellÛ;627 620;6 636;1.2775%;1.3115%;40.241;-0.146
-JaÈn;JaÈn;AndalucÌa;23;JaÈn;618 143;13 496;1.2582%;2.6672%;38.016;-3.441
-Cantabria;Santander;Cantabria;39;Cantabria;593 623;5 321;1.2083%;1.0516%;43.197;-4.029
-Huelva;Huelva;AndalucÌa;21;Huelva;538 789;10 128;1.0967%;2.0016%;37.577;-6.829
-Valladolid;Valladolid;Castilla y LeÛn;47;Valladolid;528 644;8 110;1.0760%;1.6028%;41.634;-4.847
-Ciudad Real;Ciudad Real;Castilla-La Mancha;13;Ciudad Real;494 848;19 813;1.0073%;3.9157%;38.925;-3.828
-LÈrida;LÈrida;CataluÒa;25;Lleida;458 226;12 172;0.9327%;2.4056%;42.043;1.0476
-LeÛn;LeÛn;Castilla y LeÛn;24;LeÛn;448 030;15 581;0.9120%;3.0793%;42.619;-5.839
-Albacete;Albacete;Castilla-La Mancha;2;Albacete;390 751;14 924;0.7954%;2.9495%;38.825;-1.980
-C·ceres;C·ceres;Extremadura;10;C·ceres;388 190;19 868;0.7902%;3.9265%;39.711;-6.160
-Burgos;Burgos;Castilla y LeÛn;9;Burgos;362 663;14 292;0.7382%;2.8246%;42.368;-3.585
-¡lava;Vitoria;PaÌs Vasco;1;Araba/¡lava;341 961;3 037;0.6961%;0.6002%;42.835;-2.720
-Salamanca;Salamanca;Castilla y LeÛn;37;Salamanca;328 446;12 350;0.6685%;2.4408%;40.804;-6.065
-La Rioja;LogroÒo;La Rioja;26;Rioja, La;326 803;5 045;0.6652%;0.9971%;42.274;-2.517
-Lugo;Lugo;Galicia;27;Lugo;326 022;9 856;0.6636%;1.9479%;43.011;-7.446
-Orense;Orense;Galicia;32;Ourense;305 278;7 273;0.6214%;1.4374%;42.196;-7.592
-Guadalajara;Guadalajara;Castilla-La Mancha;19;Guadalajara;285 839;12 214;0.5818%;2.4139%;40.813;-2.623
-Huesca;Huesca;AragÛn;22;Huesca;230 087;15 636;0.4683%;3.0902%;42.203;-0.072
-Cuenca;Cuenca;Castilla-La Mancha;16;Cuenca;199 859;17 140;0.4068%;3.3874%;39.896;-2.195
-Zamora;Zamora;Castilla y LeÛn;49;Zamora;165 564;10 561;0.3370%;2.0872%;41.727;-5.980
-¡vila;¡vila;Castilla y LeÛn;5;¡vila;160 738;8 050;0.3272%;1.5909%;40.571;-4.945
-Palencia;Palencia;Castilla y LeÛn;34;Palencia;158 702;8 052;0.3230%;1.5913%;42.371;-4.535
-Segovia;Segovia;Castilla y LeÛn;40;Segovia;158 251;6 921;0.3221%;1.3678%;41.170;-4.054
-Teruel;Teruel;AragÛn;44;Teruel;136 091;14 810;0.2770%;2.9269%;40.661;-0.815
-Soria;Soria;Castilla y LeÛn;42;Soria;90 183;10 306;0.1836%;2.0368%;41.620;-2.588
-Melilla;-;Ciudad AutÛnoma de Melilla;52;Melilla;87 067;13;0.1772%;0.0026%;35.291;-2.950
-Ceuta;-;Ciudad AutÛnoma de Ceuta;51;Ceuta;83 567;19;0.1701%;0.0038%;35.893;-5.342
+Capital,Comunidad aut√≥noma,Nombre oficial,Poblacion,Superficie,%Poblacion,%Superficie2,lat,lon,prov,code
+Madrid,Comunidad de Madrid,Madrid,7113886,8028,0.14480221042467645,0.015865863491912914,40.495,-3.717,Madrid,28
+Barcelona,Catalu√±a,Barcelona,5959941,7728,0.12131381228215585,0.015272968742588816,41.73,1.9837,Barcelona,8
+Valencia,Comunitat Valenciana,Valencia/Val√®ncia,2763996,10807,0.056260773704409094,0.021358045186485163,39.37,-0.8,Valencia,46
+Alicante,Comunitat Valenciana,Alicante/Alacant,2033566,5817,0.04139296747859996,0.011496229189394299,38.478,-0.568,Alicante,3
+Sevilla,Andaluc√≠a,Sevilla,1977664,14036,0.04025508964823267,0.027739569005043558,37.435,-5.682,Sevilla,41
+M√°laga,Andaluc√≠a,M√°laga,1791183,7306,0.03645929351062179,0.014438963461872916,36.813,-4.725,M√°laga,29
+Murcia,Regi√≥n de Murcia,Murcia,1586989,11314,0.03230295159630711,0.02236003731284289,38.002,-1.485,Murcia,30
+C√°diz,Andaluc√≠a,C√°diz,1261420,7440,0.02567603757972722,0.01470378978323768,36.553,-5.76,C√°diz,11
+Palma,Illes Balears,"Balears, Illes",1249844,4992,0.025440409627876984,0.009865768628753024,39.574,2.9124,Islas Baleares,7
+Las Palmas de Gran Canaria,Canarias,"Palmas, Las",1171547,4066,0.02384668452887752,0.008035700169172636,28.365,-14.54,Las Palmas,35
+Bilbao,Pa√≠s Vasco,Bizkaia,1167233,2217,0.02375887362836941,0.004381492197505099,43.238,-2.851,Vizcaya,48
+La Coru√±a,Galicia,"Coru√±a, A",1135623,7950,0.02311545625121099,0.01571171085708865,43.126,-8.464,La Coru√±a,15
+Santa Cruz de Tenerife,Canarias,Santa Cruz de Tenerife,1087319,3381,0.0221322347078304,0.006681923824882607,28.312,-17.01,Santa Cruz de Tenerife,38
+Oviedo,Principado de Asturias,Asturias,1015128,10604,0.02066279643277682,0.020956853072775856,43.292,-5.993,Asturias,33
+Zaragoza,Arag√≥n,Zaragoza,998443,17274,0.02032317546036656,0.03413887966608168,41.62,-1.064,Zaragoza,50
+Pontevedra,Galicia,Pontevedra,947818,4495,0.019292710268381582,0.008883539660706099,42.435,-8.461,Pontevedra,36
+Granada,Andaluc√≠a,Granada,945797,12647,0.01925157308017414,0.024994466315672974,37.312,-3.267,Granada,18
+Tarragona,Catalu√±a,Tarragona,875530,6303,0.017821297571132988,0.012456718683299341,41.087,0.818,Tarragona,43
+Gerona,Catalu√±a,Girona,830429,5910,0.01690327266992381,0.01168002656168477,42.127,2.6733,Gerona,17
+C√≥rdoba,Andaluc√≠a,C√≥rdoba,773163,13771,0.015737630799618395,0.02721584530980727,37.992,-4.809,C√≥rdoba,14
+Almer√≠a,Andaluc√≠a,Almer√≠a,770554,8775,0.015684524949032937,0.017342171417729924,37.196,-2.344,Almer√≠a,4
+Toledo,Castilla-La Mancha,Toledo,755081,15370,0.015369574076626348,0.030375974323704723,39.793,-4.148,Toledo,45
+San Sebasti√°n,Pa√≠s Vasco,Gipuzkoa,733149,1980,0.014923151111873468,0.00391310534553906,43.143,-2.194,Guip√∫zcoa,20
+Pamplona,Comunidad Foral de Navarra,Navarra,683854,10391,0.01391975789431496,0.020535897800755744,42.667,-1.646,Navarra,31
+Badajoz,Extremadura,Badajoz,665155,21766,0.01353914221777319,0.04301649037929454,38.709,-6.141,Badajoz,6
+Castell√≥n de la Plana,Comunitat Valenciana,Castell√≥n/Castell√≥,627620,6636,0.012775122247775045,0.013114831855049091,40.241,-0.146,Castell√≥n,12
+Ja√©n,Andaluc√≠a,Ja√©n,618143,13496,0.012582219163835458,0.02667235845626018,38.016,-3.441,Ja√©n,23
+Santander,Cantabria,Cantabria,593623,5321,0.012083117800724906,0.010515976537178453,43.197,-4.029,Cantabria,39
+Huelva,Andaluc√≠a,Huelva,538789,10128,0.010966978969370747,0.020016126737181617,37.577,-6.829,Huelva,21
+Valladolid,Castilla y Le√≥n,Valladolid,528644,8110,0.010760478833613956,0.016027921390061504,41.634,-4.847,Valladolid,47
+Ciudad Real,Castilla-La Mancha,Ciudad Real,494848,19813,0.010072565715029772,0.039156745561194646,38.925,-3.828,Ciudad Real,13
+L√©rida,Catalu√±a,Lleida,458226,12172,0.009327129739506338,0.024055716295909815,42.043,1.0476,L√©rida,25
+Le√≥n,Castilla y Le√≥n,Le√≥n,448030,15581,0.009119591505482064,0.030792976964062673,42.619,-5.839,Le√≥n,24
+Albacete,Castilla-La Mancha,Albacete,390751,14924,0.00795368502189278,0.029494537463042893,38.825,-1.98,Albacete,2
+C√°ceres,Extremadura,C√°ceres,388190,19868,0.007901556204970834,0.03926544293190406,39.711,-6.16,C√°ceres,10
+Burgos,Castilla y Le√≥n,Burgos,362663,14292,0.007381957489794528,0.028245505857800123,42.368,-3.585,Burgos,9
+Vitoria,Pa√≠s Vasco,Araba/√Ålava,341961,3037,0.0069605710126691344,0.0060020711789909725,42.835,-2.72,√Ålava,1
+Salamanca,Castilla y Le√≥n,Salamanca,328446,12350,0.006685474971786626,0.024407500513842117,40.804,-6.065,Salamanca,37
+Logro√±o,La Rioja,"Rioja, La",326803,5045,0.0066520319236793414,0.009970513367800282,42.274,-2.517,La Rioja,26
+Lugo,Galicia,Lugo,326022,9856,0.0066361347717792864,0.019478568831127765,43.011,-7.446,Lugo,27
+Orense,Galicia,Ourense,305278,7273,0.0062138933901983206,0.014373745039447263,42.196,-7.592,Orense,32
+Guadalajara,Castilla-La Mancha,Guadalajara,285839,12214,0.00581821511134408,0.02413872156081519,40.813,-2.623,Guadalajara,19
+Huesca,Arag√≥n,Huesca,230087,15636,0.00468339051117526,0.030901674334772092,42.203,-0.072,Huesca,22
+Cuenca,Castilla-La Mancha,Cuenca,199859,17140,0.004068103561578778,0.033874053344716916,39.896,-2.195,Cuenca,16
+Zamora,Castilla y Le√≥n,Zamora,165564,10561,0.003370033363867671,0.0208718714920394,41.727,-5.98,Zamora,49
+√Åvila,Castilla y Le√≥n,√Åvila,160738,8050,0.003271800770948767,0.015909342440196685,40.571,-4.945,√Åvila,5
+Palencia,Castilla y Le√≥n,Palencia,158702,8052,0.00323035825972148,0.015913295071858843,42.371,-4.535,Palencia,34
+Segovia,Castilla y Le√≥n,Segovia,158251,6921,0.003221178214258068,0.013678081866906987,41.17,-4.054,Segovia,40
+Teruel,Arag√≥n,Teruel,136091,14810,0.002770114339603508,0.029269237458299735,40.661,-0.815,Teruel,44
+Soria,Castilla y Le√≥n,Soria,90183,10306,0.0018356630599265429,0.020367910955113915,41.62,-2.588,Soria,42
+-,Ciudad Aut√≥noma de Melilla,Melilla,87067,13,0.0017722372912702428,2.5692105804044332e-05,35.291,-2.95,Melilla,52
+-,Ciudad Aut√≥noma de Ceuta,Ceuta,83567,19,0.0017009952533058495,3.7550000790526334e-05,35.893,-5.342,Ceuta,51
