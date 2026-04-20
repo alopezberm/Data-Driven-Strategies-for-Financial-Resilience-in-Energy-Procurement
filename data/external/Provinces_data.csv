@@ -1,0 +1,53 @@
+Nombre;Capital;Comunidad autónoma;CODIGO;Nombre oficial;Poblacion;Superficie;%Poblacion;%Superficie2;Lat;Lon
+Madrid;Madrid;Comunidad de Madrid;28;Madrid;7 113 886;8 028;14.4802%;1.5866%;40.495;-3.717
+Barcelona;Barcelona;Cataluña;8;Barcelona;5 959 941;7 728;12.1314%;1.5273%;41.730;1.9837
+Valencia;Valencia;Comunitat Valenciana;46;Valencia/València;2 763 996;10 807;5.6261%;2.1358%;39.370;-0.800
+Alicante;Alicante;Comunitat Valenciana;3;Alicante/Alacant;2 033 566;5 817;4.1393%;1.1496%;38.478;-0.568
+Sevilla;Sevilla;Andalucía;41;Sevilla;1 977 664;14 036;4.0255%;2.7740%;37.435;-5.682
+Málaga;Málaga;Andalucía;29;Málaga;1 791 183;7 306;3.6459%;1.4439%;36.813;-4.725
+Murcia;Murcia;Región de Murcia;30;Murcia;1 586 989;11 314;3.2303%;2.2360%;38.002;-1.485
+Cádiz;Cádiz;Andalucía;11;Cádiz;1 261 420;7 440;2.5676%;1.4704%;36.553;-5.760
+Islas Baleares;Palma;Illes Balears;7;Balears, Illes;1 249 844;4 992;2.5440%;0.9866%;39.574;2.9124
+Las Palmas;Las Palmas de Gran Canaria;Canarias;35;Palmas, Las;1 171 547;4 066;2.3847%;0.8036%;28.365;-14.54
+Vizcaya;Bilbao;País Vasco;48;Bizkaia;1 167 233;2 217;2.3759%;0.4381%;43.238;-2.851
+La Coruña;La Coruña;Galicia;15;Coruña, A;1 135 623;7 950;2.3115%;1.5712%;43.126;-8.464
+Santa Cruz de Tenerife;Santa Cruz de Tenerife;Canarias;38;Santa Cruz de Tenerife;1 087 319;3 381;2.2132%;0.6682%;28.312;-17.01
+Asturias;Oviedo;Principado de Asturias;33;Asturias;1 015 128;10 604;2.0663%;2.0957%;43.292;-5.993
+Zaragoza;Zaragoza;Aragón;50;Zaragoza;998 443;17 274;2.0323%;3.4139%;41.620;-1.064
+Pontevedra;Pontevedra;Galicia;36;Pontevedra;947 818;4 495;1.9293%;0.8884%;42.435;-8.461
+Granada;Granada;Andalucía;18;Granada;945 797;12 647;1.9252%;2.4994%;37.312;-3.267
+Tarragona;Tarragona;Cataluña;43;Tarragona;875 530;6 303;1.7821%;1.2457%;41.087;0.8180
+Gerona;Gerona;Cataluña;17;Girona;830 429;5 910;1.6903%;1.1680%;42.127;2.6733
+Córdoba;Córdoba;Andalucía;14;Córdoba;773 163;13 771;1.5738%;2.7216%;37.992;-4.809
+Almería;Almería;Andalucía;4;Almería;770 554;8 775;1.5685%;1.7342%;37.196;-2.344
+Toledo;Toledo;Castilla-La Mancha;45;Toledo;755 081;15 370;1.5370%;3.0376%;39.793;-4.148
+Guipúzcoa;San Sebastián;País Vasco;20;Gipuzkoa;733 149;1 980;1.4923%;0.3913%;43.143;-2.194
+Navarra;Pamplona;Comunidad Foral de Navarra;31;Navarra;683 854;10 391;1.3920%;2.0536%;42.667;-1.646
+Badajoz;Badajoz;Extremadura;6;Badajoz;665 155;21 766;1.3539%;4.3016%;38.709;-6.141
+Castellón;Castellón de la Plana;Comunitat Valenciana;12;Castellón/Castelló;627 620;6 636;1.2775%;1.3115%;40.241;-0.146
+Jaén;Jaén;Andalucía;23;Jaén;618 143;13 496;1.2582%;2.6672%;38.016;-3.441
+Cantabria;Santander;Cantabria;39;Cantabria;593 623;5 321;1.2083%;1.0516%;43.197;-4.029
+Huelva;Huelva;Andalucía;21;Huelva;538 789;10 128;1.0967%;2.0016%;37.577;-6.829
+Valladolid;Valladolid;Castilla y León;47;Valladolid;528 644;8 110;1.0760%;1.6028%;41.634;-4.847
+Ciudad Real;Ciudad Real;Castilla-La Mancha;13;Ciudad Real;494 848;19 813;1.0073%;3.9157%;38.925;-3.828
+Lérida;Lérida;Cataluña;25;Lleida;458 226;12 172;0.9327%;2.4056%;42.043;1.0476
+León;León;Castilla y León;24;León;448 030;15 581;0.9120%;3.0793%;42.619;-5.839
+Albacete;Albacete;Castilla-La Mancha;2;Albacete;390 751;14 924;0.7954%;2.9495%;38.825;-1.980
+Cáceres;Cáceres;Extremadura;10;Cáceres;388 190;19 868;0.7902%;3.9265%;39.711;-6.160
+Burgos;Burgos;Castilla y León;9;Burgos;362 663;14 292;0.7382%;2.8246%;42.368;-3.585
+Álava;Vitoria;País Vasco;1;Araba/Álava;341 961;3 037;0.6961%;0.6002%;42.835;-2.720
+Salamanca;Salamanca;Castilla y León;37;Salamanca;328 446;12 350;0.6685%;2.4408%;40.804;-6.065
+La Rioja;Logroño;La Rioja;26;Rioja, La;326 803;5 045;0.6652%;0.9971%;42.274;-2.517
+Lugo;Lugo;Galicia;27;Lugo;326 022;9 856;0.6636%;1.9479%;43.011;-7.446
+Orense;Orense;Galicia;32;Ourense;305 278;7 273;0.6214%;1.4374%;42.196;-7.592
+Guadalajara;Guadalajara;Castilla-La Mancha;19;Guadalajara;285 839;12 214;0.5818%;2.4139%;40.813;-2.623
+Huesca;Huesca;Aragón;22;Huesca;230 087;15 636;0.4683%;3.0902%;42.203;-0.072
+Cuenca;Cuenca;Castilla-La Mancha;16;Cuenca;199 859;17 140;0.4068%;3.3874%;39.896;-2.195
+Zamora;Zamora;Castilla y León;49;Zamora;165 564;10 561;0.3370%;2.0872%;41.727;-5.980
+Ávila;Ávila;Castilla y León;5;Ávila;160 738;8 050;0.3272%;1.5909%;40.571;-4.945
+Palencia;Palencia;Castilla y León;34;Palencia;158 702;8 052;0.3230%;1.5913%;42.371;-4.535
+Segovia;Segovia;Castilla y León;40;Segovia;158 251;6 921;0.3221%;1.3678%;41.170;-4.054
+Teruel;Teruel;Aragón;44;Teruel;136 091;14 810;0.2770%;2.9269%;40.661;-0.815
+Soria;Soria;Castilla y León;42;Soria;90 183;10 306;0.1836%;2.0368%;41.620;-2.588
+Melilla;-;Ciudad Autónoma de Melilla;52;Melilla;87 067;13;0.1772%;0.0026%;35.291;-2.950
+Ceuta;-;Ciudad Autónoma de Ceuta;51;Ceuta;83 567;19;0.1701%;0.0038%;35.893;-5.342
