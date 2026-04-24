@@ -120,6 +120,26 @@ Expected:
 
 ---
 
+### Regenerate holidays raw data (2020-2025)
+
+If you want to rebuild the holidays source file used by preprocessing, run:
+
+```bash
+python -m src.data.generate_holidays_raw
+```
+
+This generates:
+
+- `data/raw/holidays/holidays_raw.csv`
+
+with Spanish national holidays for years 2020 through 2025.
+
+You can also run the equivalent reproducible notebook:
+
+- `notebooks/03_preprocessing/00_generate_holidays_raw.ipynb`
+
+---
+
 ### Run full pipeline (end-to-end)
 
 ```bash
