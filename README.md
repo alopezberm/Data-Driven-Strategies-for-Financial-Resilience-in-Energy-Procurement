@@ -197,6 +197,8 @@ Future improvements may include:
 
 ## 📂 Project Structure
 
+For a guided, step-by-step walkthrough of the repository, see [docs/project_tour.md](docs/project_tour.md).
+
 ```
 .
 ├── README.md
