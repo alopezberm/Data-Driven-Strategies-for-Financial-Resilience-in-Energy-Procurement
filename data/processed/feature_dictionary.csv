@@ -6,7 +6,7 @@ day_of_week_sin,Derived or project-specific feature used in modeling and decisio
 day_of_year,Derived or project-specific feature used in modeling and decision support.,calendar_time,calendar_or_derived,integer,0,0.0
 day_of_year_cos,Derived or project-specific feature used in modeling and decision support.,calendar_time,calendar_or_derived,float,0,0.0
 day_of_year_sin,Derived or project-specific feature used in modeling and decision support.,calendar_time,calendar_or_derived,float,0,0.0
-holiday_name,Name of the holiday when available.,calendar_time,calendar_or_derived,string_or_mixed,2186,0.9972627737226277
+holiday_name,Name of the holiday when available.,calendar_time,calendar_or_derived,string_or_mixed,2140,0.9762773722627737
 is_month_end,Derived or project-specific feature used in modeling and decision support.,calendar_time,calendar_or_derived,integer,0,0.0
 is_month_start,Derived or project-specific feature used in modeling and decision support.,calendar_time,calendar_or_derived,integer,0,0.0
 is_weekend,Derived or project-specific feature used in modeling and decision support.,calendar_time,calendar_or_derived,integer,0,0.0
@@ -17,106 +17,98 @@ quarter,Derived or project-specific feature used in modeling and decision suppor
 season,Derived or project-specific feature used in modeling and decision support.,calendar_time,calendar_or_derived,integer,0,0.0
 week_of_year,Derived or project-specific feature used in modeling and decision support.,calendar_time,calendar_or_derived,integer,0,0.0
 year,Derived or project-specific feature used in modeling and decision support.,calendar_time,calendar_or_derived,integer,0,0.0
-Future_M1_Price,Observed daily price of the front-month futures contract.,futures_market,omip,float,1,0.0004562043795620438
-Future_M1_Price_lag_1,Lagged version of 'Future_M1_Price' using 1 previous time step(s).,futures_market,omip,float,2,0.0009124087591240876
-Future_M1_Price_lag_14,Lagged version of 'Future_M1_Price' using 14 previous time step(s).,futures_market,omip,float,15,0.006843065693430657
-Future_M1_Price_lag_28,Lagged version of 'Future_M1_Price' using 28 previous time step(s).,futures_market,omip,float,29,0.01322992700729927
-Future_M1_Price_lag_7,Lagged version of 'Future_M1_Price' using 7 previous time step(s).,futures_market,omip,float,8,0.0036496350364963502
-Future_M1_Price_rolling_mean_14,"Rolling mean of 'Future_M1_Price' computed over a trailing window of 14 period(s), using past information only.",futures_market,omip,float,15,0.006843065693430657
-Future_M1_Price_rolling_mean_28,"Rolling mean of 'Future_M1_Price' computed over a trailing window of 28 period(s), using past information only.",futures_market,omip,float,29,0.01322992700729927
-Future_M1_Price_rolling_mean_7,"Rolling mean of 'Future_M1_Price' computed over a trailing window of 7 period(s), using past information only.",futures_market,omip,float,8,0.0036496350364963502
-Future_M1_Price_rolling_std_14,"Rolling std of 'Future_M1_Price' computed over a trailing window of 14 period(s), using past information only.",futures_market,omip,float,15,0.006843065693430657
-Future_M1_Price_rolling_std_28,"Rolling std of 'Future_M1_Price' computed over a trailing window of 28 period(s), using past information only.",futures_market,omip,float,29,0.01322992700729927
-Future_M1_Price_rolling_std_7,"Rolling std of 'Future_M1_Price' computed over a trailing window of 7 period(s), using past information only.",futures_market,omip,float,8,0.0036496350364963502
-Future_M2_Price,Observed daily price of the second-month futures contract.,futures_market,omip,float,1,0.0004562043795620438
-Future_M2_Price_lag_1,Lagged version of 'Future_M2_Price' using 1 previous time step(s).,futures_market,omip,float,2,0.0009124087591240876
-Future_M2_Price_lag_14,Lagged version of 'Future_M2_Price' using 14 previous time step(s).,futures_market,omip,float,15,0.006843065693430657
-Future_M2_Price_lag_28,Lagged version of 'Future_M2_Price' using 28 previous time step(s).,futures_market,omip,float,29,0.01322992700729927
-Future_M2_Price_lag_7,Lagged version of 'Future_M2_Price' using 7 previous time step(s).,futures_market,omip,float,8,0.0036496350364963502
-Future_M3_Price,Observed daily price of the third-month futures contract.,futures_market,omip,float,1,0.0004562043795620438
-Future_M4_Price,Observed daily price of the fourth-month futures contract.,futures_market,omip,float,1,0.0004562043795620438
-Future_M5_Price,Observed daily price of the fifth-month futures contract.,futures_market,omip,float,1,0.0004562043795620438
-Future_M6_Price,Observed daily price of the sixth-month futures contract.,futures_market,omip,float,1,0.0004562043795620438
+Future_M1_Price,Observed daily price of the front-month futures contract.,futures_market,omip,float,0,0.0
+Future_M1_Price_lag_1,Lagged version of 'Future_M1_Price' using 1 previous time step(s).,futures_market,omip,float,1,0.0004562043795620438
+Future_M1_Price_lag_14,Lagged version of 'Future_M1_Price' using 14 previous time step(s).,futures_market,omip,float,14,0.006386861313868613
+Future_M1_Price_lag_28,Lagged version of 'Future_M1_Price' using 28 previous time step(s).,futures_market,omip,float,28,0.012773722627737226
+Future_M1_Price_lag_7,Lagged version of 'Future_M1_Price' using 7 previous time step(s).,futures_market,omip,float,7,0.0031934306569343066
+Future_M1_Price_rolling_mean_14,"Rolling mean of 'Future_M1_Price' computed over a trailing window of 14 period(s), using past information only.",futures_market,omip,float,14,0.006386861313868613
+Future_M1_Price_rolling_mean_28,"Rolling mean of 'Future_M1_Price' computed over a trailing window of 28 period(s), using past information only.",futures_market,omip,float,28,0.012773722627737226
+Future_M1_Price_rolling_mean_7,"Rolling mean of 'Future_M1_Price' computed over a trailing window of 7 period(s), using past information only.",futures_market,omip,float,7,0.0031934306569343066
+Future_M1_Price_rolling_std_14,"Rolling std of 'Future_M1_Price' computed over a trailing window of 14 period(s), using past information only.",futures_market,omip,float,14,0.006386861313868613
+Future_M1_Price_rolling_std_28,"Rolling std of 'Future_M1_Price' computed over a trailing window of 28 period(s), using past information only.",futures_market,omip,float,28,0.012773722627737226
+Future_M1_Price_rolling_std_7,"Rolling std of 'Future_M1_Price' computed over a trailing window of 7 period(s), using past information only.",futures_market,omip,float,7,0.0031934306569343066
+Future_M2_Price,Observed daily price of the second-month futures contract.,futures_market,omip,float,0,0.0
+Future_M2_Price_lag_1,Lagged version of 'Future_M2_Price' using 1 previous time step(s).,futures_market,omip,float,1,0.0004562043795620438
+Future_M2_Price_lag_14,Lagged version of 'Future_M2_Price' using 14 previous time step(s).,futures_market,omip,float,14,0.006386861313868613
+Future_M2_Price_lag_28,Lagged version of 'Future_M2_Price' using 28 previous time step(s).,futures_market,omip,float,28,0.012773722627737226
+Future_M2_Price_lag_7,Lagged version of 'Future_M2_Price' using 7 previous time step(s).,futures_market,omip,float,7,0.0031934306569343066
+Future_M3_Price,Observed daily price of the third-month futures contract.,futures_market,omip,float,0,0.0
+Future_M4_Price,Observed daily price of the fourth-month futures contract.,futures_market,omip,float,0,0.0
+Future_M5_Price,Observed daily price of the fifth-month futures contract.,futures_market,omip,float,0,0.0
+Future_M6_Price,Observed daily price of the sixth-month futures contract.,futures_market,omip,float,0,0.0
 date,Calendar date of the observation.,identifier,system,string_or_mixed,0,0.0
-front_month_premium,Absolute premium of the front-month future over the current spot price.,market_structure,derived,float,1,0.0004562043795620438
-front_month_premium_rel,Relative premium of the front-month future over the current spot price.,market_structure,derived,float,1,0.0004562043795620438
-spread_future_m1_vs_future_m2,Absolute spread between market quantities represented by 'future_m1_vs_future_m2'.,market_structure,derived,float,1,0.0004562043795620438
-spread_future_m1_vs_future_m2_rel,Relative spread between futures-market quantities represented by 'future_m1_vs_future_m2'.,market_structure,derived,float,1,0.0004562043795620438
-spread_future_m1_vs_future_m3,Absolute spread between market quantities represented by 'future_m1_vs_future_m3'.,market_structure,derived,float,1,0.0004562043795620438
-spread_future_m1_vs_future_m3_rel,Relative spread between futures-market quantities represented by 'future_m1_vs_future_m3'.,market_structure,derived,float,1,0.0004562043795620438
-spread_future_m1_vs_future_m6,Absolute spread between market quantities represented by 'future_m1_vs_future_m6'.,market_structure,derived,float,1,0.0004562043795620438
-spread_future_m1_vs_future_m6_rel,Relative spread between futures-market quantities represented by 'future_m1_vs_future_m6'.,market_structure,derived,float,1,0.0004562043795620438
-spread_future_m2_vs_future_m3,Absolute spread between market quantities represented by 'future_m2_vs_future_m3'.,market_structure,derived,float,1,0.0004562043795620438
-spread_future_m2_vs_future_m3_rel,Relative spread between futures-market quantities represented by 'future_m2_vs_future_m3'.,market_structure,derived,float,1,0.0004562043795620438
-spread_future_m3_vs_future_m4,Absolute spread between market quantities represented by 'future_m3_vs_future_m4'.,market_structure,derived,float,1,0.0004562043795620438
-spread_future_m3_vs_future_m4_rel,Relative spread between futures-market quantities represented by 'future_m3_vs_future_m4'.,market_structure,derived,float,1,0.0004562043795620438
-spread_future_m4_vs_future_m5,Absolute spread between market quantities represented by 'future_m4_vs_future_m5'.,market_structure,derived,float,1,0.0004562043795620438
-spread_future_m4_vs_future_m5_rel,Relative spread between futures-market quantities represented by 'future_m4_vs_future_m5'.,market_structure,derived,float,1,0.0004562043795620438
-spread_future_m5_vs_future_m6,Absolute spread between market quantities represented by 'future_m5_vs_future_m6'.,market_structure,derived,float,1,0.0004562043795620438
-spread_future_m5_vs_future_m6_rel,Relative spread between futures-market quantities represented by 'future_m5_vs_future_m6'.,market_structure,derived,float,1,0.0004562043795620438
-spread_spot_vs_future_m1,Absolute spread between the spot price and future_m1.,market_structure,derived,float,1,0.0004562043795620438
-spread_spot_vs_future_m1_rel,Relative spread between the spot price and future_m1.,market_structure,derived,float,1,0.0004562043795620438
-spread_spot_vs_future_m2,Absolute spread between the spot price and future_m2.,market_structure,derived,float,1,0.0004562043795620438
-spread_spot_vs_future_m2_rel,Relative spread between the spot price and future_m2.,market_structure,derived,float,1,0.0004562043795620438
-spread_spot_vs_future_m3,Absolute spread between the spot price and future_m3.,market_structure,derived,float,1,0.0004562043795620438
-spread_spot_vs_future_m3_rel,Relative spread between the spot price and future_m3.,market_structure,derived,float,1,0.0004562043795620438
-spread_spot_vs_future_m4,Absolute spread between the spot price and future_m4.,market_structure,derived,float,1,0.0004562043795620438
-spread_spot_vs_future_m4_rel,Relative spread between the spot price and future_m4.,market_structure,derived,float,1,0.0004562043795620438
-spread_spot_vs_future_m5,Absolute spread between the spot price and future_m5.,market_structure,derived,float,1,0.0004562043795620438
-spread_spot_vs_future_m5_rel,Relative spread between the spot price and future_m5.,market_structure,derived,float,1,0.0004562043795620438
-spread_spot_vs_future_m6,Absolute spread between the spot price and future_m6.,market_structure,derived,float,1,0.0004562043795620438
-spread_spot_vs_future_m6_rel,Relative spread between the spot price and future_m6.,market_structure,derived,float,1,0.0004562043795620438
-Future_M1_OpenInterest,Observed daily open interest for the front-month futures contract.,open_interest,omip,float,1,0.0004562043795620438
-Future_M1_OpenInterest_lag_1,Lagged version of 'Future_M1_OpenInterest' using 1 previous time step(s).,open_interest,omip,float,2,0.0009124087591240876
-Future_M1_OpenInterest_lag_14,Lagged version of 'Future_M1_OpenInterest' using 14 previous time step(s).,open_interest,omip,float,15,0.006843065693430657
-Future_M1_OpenInterest_lag_28,Lagged version of 'Future_M1_OpenInterest' using 28 previous time step(s).,open_interest,omip,float,29,0.01322992700729927
-Future_M1_OpenInterest_lag_7,Lagged version of 'Future_M1_OpenInterest' using 7 previous time step(s).,open_interest,omip,float,8,0.0036496350364963502
-Future_M1_OpenInterest_rolling_mean_14,"Rolling mean of 'Future_M1_OpenInterest' computed over a trailing window of 14 period(s), using past information only.",open_interest,omip,float,15,0.006843065693430657
-Future_M1_OpenInterest_rolling_mean_28,"Rolling mean of 'Future_M1_OpenInterest' computed over a trailing window of 28 period(s), using past information only.",open_interest,omip,float,29,0.01322992700729927
-Future_M1_OpenInterest_rolling_mean_7,"Rolling mean of 'Future_M1_OpenInterest' computed over a trailing window of 7 period(s), using past information only.",open_interest,omip,float,8,0.0036496350364963502
-Future_M1_OpenInterest_rolling_std_14,"Rolling std of 'Future_M1_OpenInterest' computed over a trailing window of 14 period(s), using past information only.",open_interest,omip,float,15,0.006843065693430657
-Future_M1_OpenInterest_rolling_std_28,"Rolling std of 'Future_M1_OpenInterest' computed over a trailing window of 28 period(s), using past information only.",open_interest,omip,float,29,0.01322992700729927
-Future_M1_OpenInterest_rolling_std_7,"Rolling std of 'Future_M1_OpenInterest' computed over a trailing window of 7 period(s), using past information only.",open_interest,omip,float,8,0.0036496350364963502
-Future_M2_OpenInterest,Observed daily open interest for the second-month futures contract.,open_interest,omip,float,1,0.0004562043795620438
-Future_M2_OpenInterest_lag_1,Lagged version of 'Future_M2_OpenInterest' using 1 previous time step(s).,open_interest,omip,float,2,0.0009124087591240876
-Future_M2_OpenInterest_lag_14,Lagged version of 'Future_M2_OpenInterest' using 14 previous time step(s).,open_interest,omip,float,15,0.006843065693430657
-Future_M2_OpenInterest_lag_28,Lagged version of 'Future_M2_OpenInterest' using 28 previous time step(s).,open_interest,omip,float,29,0.01322992700729927
-Future_M2_OpenInterest_lag_7,Lagged version of 'Future_M2_OpenInterest' using 7 previous time step(s).,open_interest,omip,float,8,0.0036496350364963502
-Future_M3_OpenInterest,Observed daily open interest for the third-month futures contract.,open_interest,omip,float,1,0.0004562043795620438
-Future_M4_OpenInterest,Observed daily open interest for the fourth-month futures contract.,open_interest,omip,float,1,0.0004562043795620438
-Future_M5_OpenInterest,Observed daily open interest for the fifth-month futures contract.,open_interest,omip,float,1,0.0004562043795620438
-Future_M6_OpenInterest,Observed daily open interest for the sixth-month futures contract.,open_interest,omip,float,1,0.0004562043795620438
-future_m1_oi_change_1d,One-day absolute change in open interest.,open_interest,omip,float,2,0.0009124087591240876
-future_m1_oi_change_7d,Seven-day absolute change in open interest.,open_interest,omip,float,8,0.0036496350364963502
-future_m1_oi_pct_change_1d,One-day percentage change in open interest.,open_interest,omip,float,2,0.0009124087591240876
-future_m1_oi_pct_change_7d,Seven-day percentage change in open interest.,open_interest,omip,float,8,0.0036496350364963502
-future_m2_oi_change_1d,One-day absolute change in open interest.,open_interest,omip,float,2,0.0009124087591240876
-future_m2_oi_change_7d,Seven-day absolute change in open interest.,open_interest,omip,float,8,0.0036496350364963502
-future_m2_oi_pct_change_1d,One-day percentage change in open interest.,open_interest,omip,float,103,0.04698905109489051
-future_m2_oi_pct_change_7d,Seven-day percentage change in open interest.,open_interest,omip,float,58,0.02645985401459854
-future_m3_oi_change_1d,One-day absolute change in open interest.,open_interest,omip,float,2,0.0009124087591240876
-future_m3_oi_change_7d,Seven-day absolute change in open interest.,open_interest,omip,float,8,0.0036496350364963502
-future_m3_oi_pct_change_1d,One-day percentage change in open interest.,open_interest,omip,float,902,0.4114963503649635
-future_m3_oi_pct_change_7d,Seven-day percentage change in open interest.,open_interest,omip,float,767,0.3499087591240876
-future_m4_oi_change_1d,One-day absolute change in open interest.,open_interest,omip,float,2,0.0009124087591240876
-future_m4_oi_change_7d,Seven-day absolute change in open interest.,open_interest,omip,float,8,0.0036496350364963502
-future_m4_oi_pct_change_1d,One-day percentage change in open interest.,open_interest,omip,float,1600,0.7299270072992701
-future_m4_oi_pct_change_7d,Seven-day percentage change in open interest.,open_interest,omip,float,1509,0.6884124087591241
-future_m5_oi_change_1d,One-day absolute change in open interest.,open_interest,omip,float,2,0.0009124087591240876
-future_m5_oi_change_7d,Seven-day absolute change in open interest.,open_interest,omip,float,8,0.0036496350364963502
-future_m5_oi_pct_change_1d,One-day percentage change in open interest.,open_interest,omip,float,1896,0.864963503649635
-future_m5_oi_pct_change_7d,Seven-day percentage change in open interest.,open_interest,omip,float,1836,0.8375912408759124
-future_m6_oi_change_1d,One-day absolute change in open interest.,open_interest,omip,float,2,0.0009124087591240876
-future_m6_oi_change_7d,Seven-day absolute change in open interest.,open_interest,omip,float,8,0.0036496350364963502
-future_m6_oi_pct_change_1d,One-day percentage change in open interest.,open_interest,omip,float,2112,0.9635036496350365
-future_m6_oi_pct_change_7d,Seven-day percentage change in open interest.,open_interest,omip,float,2088,0.9525547445255474
-open_interest_total,Total open interest aggregated across available futures maturities.,open_interest,omip,float,1,0.0004562043795620438
+front_month_premium,Absolute premium of the front-month future over the current spot price.,market_structure,derived,float,0,0.0
+front_month_premium_rel,Relative premium of the front-month future over the current spot price.,market_structure,derived,float,0,0.0
+spread_future_m1_vs_future_m2,Absolute spread between market quantities represented by 'future_m1_vs_future_m2'.,market_structure,derived,float,0,0.0
+spread_future_m1_vs_future_m2_rel,Relative spread between futures-market quantities represented by 'future_m1_vs_future_m2'.,market_structure,derived,float,0,0.0
+spread_future_m1_vs_future_m3,Absolute spread between market quantities represented by 'future_m1_vs_future_m3'.,market_structure,derived,float,0,0.0
+spread_future_m1_vs_future_m3_rel,Relative spread between futures-market quantities represented by 'future_m1_vs_future_m3'.,market_structure,derived,float,0,0.0
+spread_future_m1_vs_future_m6,Absolute spread between market quantities represented by 'future_m1_vs_future_m6'.,market_structure,derived,float,0,0.0
+spread_future_m1_vs_future_m6_rel,Relative spread between futures-market quantities represented by 'future_m1_vs_future_m6'.,market_structure,derived,float,0,0.0
+spread_future_m2_vs_future_m3,Absolute spread between market quantities represented by 'future_m2_vs_future_m3'.,market_structure,derived,float,0,0.0
+spread_future_m2_vs_future_m3_rel,Relative spread between futures-market quantities represented by 'future_m2_vs_future_m3'.,market_structure,derived,float,0,0.0
+spread_future_m3_vs_future_m4,Absolute spread between market quantities represented by 'future_m3_vs_future_m4'.,market_structure,derived,float,0,0.0
+spread_future_m3_vs_future_m4_rel,Relative spread between futures-market quantities represented by 'future_m3_vs_future_m4'.,market_structure,derived,float,0,0.0
+spread_future_m4_vs_future_m5,Absolute spread between market quantities represented by 'future_m4_vs_future_m5'.,market_structure,derived,float,0,0.0
+spread_future_m4_vs_future_m5_rel,Relative spread between futures-market quantities represented by 'future_m4_vs_future_m5'.,market_structure,derived,float,0,0.0
+spread_future_m5_vs_future_m6,Absolute spread between market quantities represented by 'future_m5_vs_future_m6'.,market_structure,derived,float,0,0.0
+spread_future_m5_vs_future_m6_rel,Relative spread between futures-market quantities represented by 'future_m5_vs_future_m6'.,market_structure,derived,float,0,0.0
+spread_spot_vs_future_m1,Absolute spread between the spot price and future_m1.,market_structure,derived,float,0,0.0
+spread_spot_vs_future_m1_rel,Relative spread between the spot price and future_m1.,market_structure,derived,float,0,0.0
+spread_spot_vs_future_m2,Absolute spread between the spot price and future_m2.,market_structure,derived,float,0,0.0
+spread_spot_vs_future_m2_rel,Relative spread between the spot price and future_m2.,market_structure,derived,float,0,0.0
+spread_spot_vs_future_m3,Absolute spread between the spot price and future_m3.,market_structure,derived,float,0,0.0
+spread_spot_vs_future_m3_rel,Relative spread between the spot price and future_m3.,market_structure,derived,float,0,0.0
+spread_spot_vs_future_m4,Absolute spread between the spot price and future_m4.,market_structure,derived,float,0,0.0
+spread_spot_vs_future_m4_rel,Relative spread between the spot price and future_m4.,market_structure,derived,float,0,0.0
+spread_spot_vs_future_m5,Absolute spread between the spot price and future_m5.,market_structure,derived,float,0,0.0
+spread_spot_vs_future_m5_rel,Relative spread between the spot price and future_m5.,market_structure,derived,float,0,0.0
+spread_spot_vs_future_m6,Absolute spread between the spot price and future_m6.,market_structure,derived,float,0,0.0
+spread_spot_vs_future_m6_rel,Relative spread between the spot price and future_m6.,market_structure,derived,float,0,0.0
+Future_M1_OpenInterest,Observed daily open interest for the front-month futures contract.,open_interest,omip,float,0,0.0
+Future_M1_OpenInterest_lag_1,Lagged version of 'Future_M1_OpenInterest' using 1 previous time step(s).,open_interest,omip,float,1,0.0004562043795620438
+Future_M1_OpenInterest_lag_14,Lagged version of 'Future_M1_OpenInterest' using 14 previous time step(s).,open_interest,omip,float,14,0.006386861313868613
+Future_M1_OpenInterest_lag_28,Lagged version of 'Future_M1_OpenInterest' using 28 previous time step(s).,open_interest,omip,float,28,0.012773722627737226
+Future_M1_OpenInterest_lag_7,Lagged version of 'Future_M1_OpenInterest' using 7 previous time step(s).,open_interest,omip,float,7,0.0031934306569343066
+Future_M1_OpenInterest_rolling_mean_14,"Rolling mean of 'Future_M1_OpenInterest' computed over a trailing window of 14 period(s), using past information only.",open_interest,omip,float,14,0.006386861313868613
+Future_M1_OpenInterest_rolling_mean_28,"Rolling mean of 'Future_M1_OpenInterest' computed over a trailing window of 28 period(s), using past information only.",open_interest,omip,float,28,0.012773722627737226
+Future_M1_OpenInterest_rolling_mean_7,"Rolling mean of 'Future_M1_OpenInterest' computed over a trailing window of 7 period(s), using past information only.",open_interest,omip,float,7,0.0031934306569343066
+Future_M1_OpenInterest_rolling_std_14,"Rolling std of 'Future_M1_OpenInterest' computed over a trailing window of 14 period(s), using past information only.",open_interest,omip,float,14,0.006386861313868613
+Future_M1_OpenInterest_rolling_std_28,"Rolling std of 'Future_M1_OpenInterest' computed over a trailing window of 28 period(s), using past information only.",open_interest,omip,float,28,0.012773722627737226
+Future_M1_OpenInterest_rolling_std_7,"Rolling std of 'Future_M1_OpenInterest' computed over a trailing window of 7 period(s), using past information only.",open_interest,omip,float,7,0.0031934306569343066
+Future_M2_OpenInterest,Observed daily open interest for the second-month futures contract.,open_interest,omip,float,0,0.0
+Future_M2_OpenInterest_lag_1,Lagged version of 'Future_M2_OpenInterest' using 1 previous time step(s).,open_interest,omip,float,1,0.0004562043795620438
+Future_M2_OpenInterest_lag_14,Lagged version of 'Future_M2_OpenInterest' using 14 previous time step(s).,open_interest,omip,float,14,0.006386861313868613
+Future_M2_OpenInterest_lag_28,Lagged version of 'Future_M2_OpenInterest' using 28 previous time step(s).,open_interest,omip,float,28,0.012773722627737226
+Future_M2_OpenInterest_lag_7,Lagged version of 'Future_M2_OpenInterest' using 7 previous time step(s).,open_interest,omip,float,7,0.0031934306569343066
+Future_M3_OpenInterest,Observed daily open interest for the third-month futures contract.,open_interest,omip,float,0,0.0
+future_m1_oi_change_1d,One-day absolute change in open interest.,open_interest,omip,float,1,0.0004562043795620438
+future_m1_oi_change_7d,Seven-day absolute change in open interest.,open_interest,omip,float,7,0.0031934306569343066
+future_m1_oi_pct_change_1d,One-day percentage change in open interest.,open_interest,omip,float,1,0.0004562043795620438
+future_m1_oi_pct_change_7d,Seven-day percentage change in open interest.,open_interest,omip,float,7,0.0031934306569343066
+future_m2_oi_change_1d,One-day absolute change in open interest.,open_interest,omip,float,1,0.0004562043795620438
+future_m2_oi_change_7d,Seven-day absolute change in open interest.,open_interest,omip,float,7,0.0031934306569343066
+future_m2_oi_pct_change_1d,One-day percentage change in open interest.,open_interest,omip,float,102,0.046532846715328466
+future_m2_oi_pct_change_7d,Seven-day percentage change in open interest.,open_interest,omip,float,57,0.026003649635036496
+future_m3_oi_change_1d,One-day absolute change in open interest.,open_interest,omip,float,1,0.0004562043795620438
+future_m3_oi_change_7d,Seven-day absolute change in open interest.,open_interest,omip,float,7,0.0031934306569343066
+future_m3_oi_pct_change_1d,One-day percentage change in open interest.,open_interest,omip,float,901,0.41104014598540145
+future_m3_oi_pct_change_7d,Seven-day percentage change in open interest.,open_interest,omip,float,766,0.3494525547445255
+open_interest_total,Total open interest aggregated across available futures maturities.,open_interest,omip,float,0,0.0
 Date,Derived or project-specific feature used in modeling and decision support.,other,derived,string_or_mixed,0,0.0
-city,Derived or project-specific feature used in modeling and decision support.,other,derived,string_or_mixed,0,0.0
-daylight_duration,Derived or project-specific feature used in modeling and decision support.,other,derived,float,0,0.0
-is_holiday,Derived or project-specific feature used in modeling and decision support.,other,derived,float,2186,0.9972627737226277
-oi_ratio_future_m1_vs_future_m2,Ratio between open-interest measures across futures maturities.,other,derived,float,118,0.053832116788321165
-oi_ratio_future_m1_vs_future_m3,Ratio between open-interest measures across futures maturities.,other,derived,float,933,0.42563868613138683
+daily_energy_needed_mwh,Total daily energy demand implied by units and energy intensity.,other,derived,float,0,0.0
+energy_per_unit_mwh,"Energy required to produce one unit, measured in MWh per unit.",other,derived,float,0,0.0
+inventory_holding_cost_per_unit_eur_day,Inventory holding cost per unit per day in EUR.,other,derived,float,0,0.0
+is_holiday,Derived or project-specific feature used in modeling and decision support.,other,derived,integer,0,0.0
+is_national_holiday,Derived or project-specific feature used in modeling and decision support.,other,derived,integer,0,0.0
+max_capacity_mwh_per_day,Maximum daily energy usage implied by production capacity.,other,derived,float,0,0.0
+max_capacity_units_per_day,Maximum production capacity in units per day.,other,derived,integer,0,0.0
+oi_ratio_future_m1_vs_future_m2,Ratio between open-interest measures across futures maturities.,other,derived,float,117,0.05337591240875912
+oi_ratio_future_m1_vs_future_m3,Ratio between open-interest measures across futures maturities.,other,derived,float,932,0.4251824817518248
+peninsular_max_temp,Derived or project-specific feature used in modeling and decision support.,other,derived,float,0,0.0
+peninsular_min_temp,Derived or project-specific feature used in modeling and decision support.,other,derived,float,0,0.0
+units_needed_per_day,Daily production demand in units.,other,derived,integer,0,0.0
 Spot_Price_SPEL,Observed daily spot electricity price.,spot_market,omip,float,0,0.0
 Spot_Price_SPEL_lag_1,Lagged version of 'Spot_Price_SPEL' using 1 previous time step(s).,spot_market,omip,float,1,0.0004562043795620438
 Spot_Price_SPEL_lag_14,Lagged version of 'Spot_Price_SPEL' using 14 previous time step(s).,spot_market,omip,float,14,0.006386861313868613
@@ -145,6 +137,7 @@ precipitation_sum,Daily total precipitation.,weather,weather,float,0,0.0
 rain_sum,Daily total rainfall.,weather,weather,float,0,0.0
 shortwave_radiation_sum,Daily accumulated shortwave solar radiation.,weather,weather,float,0,0.0
 snowfall_sum,Daily total snowfall.,weather,weather,float,0,0.0
+std_avg_temperature,Rolling standard deviation of average temperature from the raw weather source.,weather,weather,float,0,0.0
 sunrise,Daily sunrise timestamp.,weather,weather,string_or_mixed,0,0.0
 sunset,Daily sunset timestamp.,weather,weather,string_or_mixed,0,0.0
 surface_pressure_mean,Daily mean surface pressure.,weather,weather,float,0,0.0
