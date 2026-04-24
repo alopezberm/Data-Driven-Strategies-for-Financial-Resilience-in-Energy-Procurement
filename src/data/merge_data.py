@@ -10,7 +10,11 @@ from __future__ import annotations
 import pandas as pd
 
 from src.config.constants import DATE_COLUMN, SPOT_PRICE_COLUMN
-from src.config.paths import HOLIDAYS_RAW_FILE, MERGED_INTERIM_FILE
+from src.config.paths import (
+    DAILY_OPERATIONS_ASSUMPTIONS_FILE,
+    HOLIDAYS_RAW_FILE,
+    MERGED_INTERIM_FILE,
+)
 from src.data.clean_omip import clean_omip_data
 from src.data.clean_weather import clean_weather_data
 
@@ -22,6 +26,16 @@ class MergeDataError(Exception):
 # =========================
 # Holidays loader / cleaner
 # =========================
+
+DAILY_OPERATIONS_REQUIRED_COLUMNS = {
+    DATE_COLUMN,
+    "units_needed_per_day",
+    "energy_per_unit_mwh",
+    "daily_energy_needed_mwh",
+    "inventory_holding_cost_per_unit_eur_day",
+    "max_capacity_units_per_day",
+    "max_capacity_mwh_per_day",
+}
 
 def _load_holidays_raw() -> pd.DataFrame:
     """
@@ -55,16 +69,58 @@ def _load_holidays_raw() -> pd.DataFrame:
     return holidays_df
 
 
+def _load_daily_operations_assumptions() -> pd.DataFrame:
+    """
+    Load daily operational assumptions and standardize the date column.
+
+    Expected source:
+    - data/external/daily_operations_assumptions.csv
+    """
+    if not DAILY_OPERATIONS_ASSUMPTIONS_FILE.exists():
+        raise MergeDataError(
+            f"Daily operations assumptions file not found: {DAILY_OPERATIONS_ASSUMPTIONS_FILE}"
+        )
+
+    operations_df = pd.read_csv(DAILY_OPERATIONS_ASSUMPTIONS_FILE)
+
+    missing_columns = DAILY_OPERATIONS_REQUIRED_COLUMNS - set(operations_df.columns)
+    if missing_columns:
+        raise MergeDataError(
+            "Daily operations assumptions file is missing required columns: "
+            f"{sorted(missing_columns)}"
+        )
+
+    operations_df = operations_df.copy()
+    operations_df[DATE_COLUMN] = pd.to_datetime(operations_df[DATE_COLUMN], errors="coerce")
+
+    if operations_df[DATE_COLUMN].isna().any():
+        invalid_count = int(operations_df[DATE_COLUMN].isna().sum())
+        raise MergeDataError(
+            f"Found {invalid_count} invalid date values in daily operations assumptions."
+        )
+
+    if operations_df[DATE_COLUMN].duplicated().any():
+        raise MergeDataError("Daily operations assumptions contain duplicated dates.")
+
+    return operations_df.sort_values(DATE_COLUMN).reset_index(drop=True)
+
+
 # =========================
 # Validation helpers
 # =========================
 
-def _validate_clean_inputs(omip_df: pd.DataFrame, weather_df: pd.DataFrame, holidays_df: pd.DataFrame) -> None:
+def _validate_clean_inputs(
+    omip_df: pd.DataFrame,
+    weather_df: pd.DataFrame,
+    holidays_df: pd.DataFrame,
+    operations_df: pd.DataFrame,
+) -> None:
     """Validate that cleaned inputs are ready to be merged."""
     datasets = {
         "omip": omip_df,
         "weather": weather_df,
         "holidays": holidays_df,
+        "daily_operations": operations_df,
     }
 
     for name, df in datasets.items():
@@ -109,6 +165,7 @@ def merge_datasets(
     omip_df: pd.DataFrame,
     weather_df: pd.DataFrame,
     holidays_df: pd.DataFrame | None = None,
+    daily_operations_df: pd.DataFrame | None = None,
 ) -> pd.DataFrame:
     """
     Merge already-cleaned input dataframes into a single interim modeling table.
@@ -146,6 +203,23 @@ def merge_datasets(
             on=DATE_COLUMN,
             how="left",
             suffixes=("", "_holiday"),
+            validate="one_to_one",
+        )
+
+    if daily_operations_df is not None:
+        if daily_operations_df.empty:
+            raise MergeDataError("Daily operations dataframe is empty.")
+
+        daily_operations_df = daily_operations_df.copy()
+        daily_operations_df[DATE_COLUMN] = pd.to_datetime(
+            daily_operations_df[DATE_COLUMN], errors="coerce"
+        )
+
+        merged_df = merged_df.merge(
+            daily_operations_df,
+            on=DATE_COLUMN,
+            how="left",
+            suffixes=("", "_ops"),
             validate="one_to_one",
         )
 
@@ -187,9 +261,15 @@ def merge_clean_data(save: bool = True) -> pd.DataFrame:
     omip_df = clean_omip_data(save=True)
     weather_df = clean_weather_data(save=True)
     holidays_df = _load_holidays_raw()
+    operations_df = _load_daily_operations_assumptions()
 
-    _validate_clean_inputs(omip_df, weather_df, holidays_df)
-    merged_df = merge_datasets(omip_df, weather_df, holidays_df)
+    _validate_clean_inputs(omip_df, weather_df, holidays_df, operations_df)
+    merged_df = merge_datasets(
+        omip_df,
+        weather_df,
+        holidays_df,
+        daily_operations_df=operations_df,
+    )
 
     if save:
         merged_df.to_csv(MERGED_INTERIM_FILE, index=False)

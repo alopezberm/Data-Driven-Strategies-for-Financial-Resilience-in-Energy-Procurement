@@ -71,6 +71,12 @@ BASE_DESCRIPTIONS = {
     "Season": "Season identifier provided in the raw weather/calendar dataset.",
     "Is_national_holiday": "National holiday indicator.",
     "holiday_name": "Name of the holiday when available.",
+    "units_needed_per_day": "Daily production demand in units.",
+    "energy_per_unit_mwh": "Energy required to produce one unit, measured in MWh per unit.",
+    "daily_energy_needed_mwh": "Total daily energy demand implied by units and energy intensity.",
+    "inventory_holding_cost_per_unit_eur_day": "Inventory holding cost per unit per day in EUR.",
+    "max_capacity_units_per_day": "Maximum production capacity in units per day.",
+    "max_capacity_mwh_per_day": "Maximum daily energy usage implied by production capacity.",
 }
 
 

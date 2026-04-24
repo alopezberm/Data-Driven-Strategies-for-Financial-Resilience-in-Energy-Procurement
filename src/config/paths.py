@@ -30,6 +30,7 @@ RAW_DATA_DIR = DATA_DIR / "raw"
 INTERIM_DATA_DIR = DATA_DIR / "interim"
 PROCESSED_DATA_DIR = DATA_DIR / "processed"
 OUTPUTS_DIR = DATA_DIR / "outputs"
+EXTERNAL_DATA_DIR = DATA_DIR / "external"
 
 # Raw subfolders
 RAW_OMIP_DIR = RAW_DATA_DIR / "omip"
@@ -43,6 +44,7 @@ RAW_HOLIDAYS_DIR = RAW_DATA_DIR / "holidays"
 OMIP_RAW_FILE = RAW_OMIP_DIR / "omip_prices_raw.csv"
 WEATHER_RAW_FILE = RAW_WEATHER_DIR / "openmeteo_raw.csv"
 HOLIDAYS_RAW_FILE = RAW_HOLIDAYS_DIR / "holidays_raw.csv"
+DAILY_OPERATIONS_ASSUMPTIONS_FILE = EXTERNAL_DATA_DIR / "daily_operations_assumptions.csv"
 
 # =========================
 # FILE PATHS (INTERIM)
