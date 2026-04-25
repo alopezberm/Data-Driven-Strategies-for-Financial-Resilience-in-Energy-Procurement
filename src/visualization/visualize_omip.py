@@ -1,25 +1,24 @@
-def generate_financial_eda_plots(df_raw):
-    """
-    Generates the 4 comprehensive Financial EDA plots for the technical report.
-    Expects the raw OMIP dataframe as input.
-    """
-    # Professional Aesthetics
+import matplotlib.pyplot as plt
+import seaborn as sns
+import pandas as pd
+import matplotlib.dates as mdates
+from IPython.display import display
+
+def _prep_eda_data(df_raw):
+    """Helper function to prepare and filter the dataframe for 2020-2025."""
     plt.style.use('seaborn-v0_8-whitegrid')
     sns.set_context("notebook", font_scale=1.1)
-
-    # 0. Data Preparation
+    
     df_eda = df_raw.copy()
     if 'Date' not in df_eda.columns:
         df_eda.reset_index(inplace=True)
     df_eda['Date'] = pd.to_datetime(df_eda['Date'])
     df_eda.sort_values('Date', inplace=True)
-    
-    # Filter for the 2020-2025 period
-    df_eda = df_eda[(df_eda['Date'] >= '2020-01-01') & (df_eda['Date'] <= '2025-12-31')]
+    return df_eda[(df_eda['Date'] >= '2020-01-01') & (df_eda['Date'] <= '2025-12-31')].copy()
 
-    # ==========================================================================
-    # 2.3.1: MARKET REGIMES (CONTANGO VS BACKWARDATION)
-    # ==========================================================================
+def plot_market_regimes(df_raw):
+    """2.3.1: Plots Contango vs Backwardation (Spot vs M+1)."""
+    df_eda = _prep_eda_data(df_raw)
     df_plot_1 = df_eda[(df_eda['Date'] >= '2021-06-01') & (df_eda['Date'] <= '2022-12-31')].copy()
     df_plot_1['Future_M1_Price'] = df_plot_1['Future_M1_Price'].ffill()
 
@@ -41,9 +40,9 @@ def generate_financial_eda_plots(df_raw):
     plt.tight_layout()
     plt.show()
 
-    # ==========================================================================
-    # 2.3.2: OPERATIONAL RISK (VOLATILITY SIGNALS)
-    # ==========================================================================
+def plot_volatility_signals(df_raw):
+    """2.3.2: Plots Operational Risk (7-day vs 30-day volatility)."""
+    df_eda = _prep_eda_data(df_raw)
     df_eda['Spot_Vol_7d'] = df_eda['Spot_Price_SPEL'].rolling(window=7, min_periods=1).std()
     df_eda['Spot_Vol_30d'] = df_eda['Spot_Price_SPEL'].rolling(window=30, min_periods=1).std()
 
@@ -74,9 +73,9 @@ def generate_financial_eda_plots(df_raw):
     plt.tight_layout()
     plt.show()
 
-    # ==========================================================================
-    # 2.3.3: MARKET LIQUIDITY (SPARSITY AUDIT)
-    # ==========================================================================
+def plot_liquidity_sparsity(df_raw):
+    """2.3.3: Plots the Sparsity of Open Interest to justify feature pruning."""
+    df_eda = _prep_eda_data(df_raw)
     oi_cols = [col for col in df_eda.columns if 'OpenInterest' in col]
     if oi_cols:
         audit_data = []
@@ -104,23 +103,22 @@ def generate_financial_eda_plots(df_raw):
         print("\n📊 Liquidity Audit Table:")
         display(audit_df)
 
-    # ==========================================================================
-    # 2.3.4: THE HEDGING OPPORTUNITY (M3 VARIANCE)
-    # ==========================================================================
-    df_plot_4 = df_eda.copy()
-    df_plot_4.set_index('Date', inplace=True)
+def plot_anticipation_variance(df_raw):
+    """2.3.4: Plots the Anticipation Variance for M3 Future vs Spot."""
+    df_eda = _prep_eda_data(df_raw)
+    df_eda.set_index('Date', inplace=True)
     
-    if 'Future_M3_Price' in df_plot_4.columns:
-        df_plot_4['M3_Variance'] = df_plot_4['Future_M3_Price'] - df_plot_4['Spot_Price_SPEL']
+    if 'Future_M3_Price' in df_eda.columns:
+        df_eda['M3_Variance'] = df_eda['Future_M3_Price'] - df_eda['Spot_Price_SPEL']
         
         plt.figure(figsize=(14, 4))
-        plt.fill_between(df_plot_4.index, 0, df_plot_4['M3_Variance'], 
-                         where=(df_plot_4['M3_Variance'] >= 0), color='green', alpha=0.3, 
+        plt.fill_between(df_eda.index, 0, df_eda['M3_Variance'], 
+                         where=(df_eda['M3_Variance'] >= 0), color='green', alpha=0.3, 
                          label='Cost of Hedging (Future Premium)')
-        plt.fill_between(df_plot_4.index, 0, df_plot_4['M3_Variance'], 
-                         where=(df_plot_4['M3_Variance'] < 0), color='red', alpha=0.4, 
+        plt.fill_between(df_eda.index, 0, df_eda['M3_Variance'], 
+                         where=(df_eda['M3_Variance'] < 0), color='red', alpha=0.4, 
                          label='Opportunity Saved (Spot Spike)')
-        plt.plot(df_plot_4.index, df_plot_4['M3_Variance'], color='black', lw=0.8, alpha=0.7)
+        plt.plot(df_eda.index, df_eda['M3_Variance'], color='black', lw=0.8, alpha=0.7)
         
         plt.title('2.3.4 The Hedging Opportunity: Anticipation Variance (M3 Future vs. Realized Spot)', fontweight='bold', fontsize=14)
         plt.ylabel('Variance / Margin (€/MWh)')
