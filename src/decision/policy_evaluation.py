@@ -13,7 +13,8 @@ from typing import Sequence
 
 import pandas as pd
 
-from src.config.constants import ACTIONS, DATE_COLUMN
+from src.config.constants import ACTIONS, DATE_COLUMN, validate_action_catalog
+from src.utils.validation import ValidationError, validate_and_sort_by_date
 
 
 class PolicyEvaluationError(Exception):
@@ -40,52 +41,26 @@ ACTION_BUY_M1_FUTURE = ACTIONS[1]
 ACTION_SHIFT_PRODUCTION = ACTIONS[2]
 
 
-def _validate_action_catalog() -> None:
-    """Validate the centralized action catalog used by this module."""
-    expected_actions = {
-        ACTION_DO_NOTHING,
-        ACTION_BUY_M1_FUTURE,
-        ACTION_SHIFT_PRODUCTION,
-    }
-    if len(ACTIONS) < 3 or set(ACTIONS[:3]) != expected_actions:
-        raise PolicyEvaluationError(
-            "Centralized ACTIONS constant must contain the expected action labels in the first three positions."
-        )
-
-
 # =========================
 # Validation helpers
 # =========================
 
 def _validate_policy_df(policy_df: pd.DataFrame) -> pd.DataFrame:
     """Validate a policy dataframe and standardize its date column."""
-    if policy_df.empty:
-        raise PolicyEvaluationError("Policy dataframe is empty.")
-
     missing_columns = REQUIRED_POLICY_COLUMNS - set(policy_df.columns)
     if missing_columns:
         raise PolicyEvaluationError(
             f"Policy dataframe is missing required columns: {sorted(missing_columns)}"
         )
-
-    result_df = policy_df.copy()
-    result_df[DATE_COLUMN] = pd.to_datetime(result_df[DATE_COLUMN], errors="coerce")
-
-    if result_df[DATE_COLUMN].isna().any():
-        invalid_count = int(result_df[DATE_COLUMN].isna().sum())
-        raise PolicyEvaluationError(
-            f"Found {invalid_count} invalid date values in policy dataframe."
-        )
-
-    if result_df[DATE_COLUMN].duplicated().any():
-        raise PolicyEvaluationError("Policy dataframe contains duplicated dates.")
-
-    return result_df.sort_values(DATE_COLUMN).reset_index(drop=True)
+    try:
+        return validate_and_sort_by_date(policy_df, df_name="policy dataframe")
+    except ValidationError as exc:
+        raise PolicyEvaluationError(str(exc)) from exc
 
 
 def _resolve_action_column(df: pd.DataFrame) -> str:
     """Resolve the action column name used in the provided dataframe."""
-    _validate_action_catalog()
+    validate_action_catalog()
     if "recommended_action" in df.columns:
         return "recommended_action"
     if "action_taken" in df.columns:
@@ -312,7 +287,7 @@ def build_policy_evaluation_report(policy_df: pd.DataFrame) -> dict[str, pd.Data
     dict[str, pd.DataFrame]
         Dictionary containing several policy summary tables.
     """
-    _validate_action_catalog()
+    validate_action_catalog()
     report: dict[str, pd.DataFrame] = {
         "action_summary": summarize_policy_actions(policy_df),
         "time_coverage_summary": summarize_policy_time_coverage(policy_df),

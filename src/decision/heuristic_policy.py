@@ -30,9 +30,11 @@ from src.config.constants import (
     Q50_COLUMN,
     Q90_COLUMN,
     SPOT_PRICE_COLUMN,
+    validate_action_catalog,
 )
 from src.config.settings import PolicySettings, get_default_settings
 from src.decision.action_rules import ActionRuleConfig, apply_action_rules
+from src.utils.validation import ValidationError, validate_and_sort_by_date
 
 
 HOLIDAY_COLUMN = "Is_national_holiday"
@@ -43,7 +45,6 @@ SUPPORTED_ACTIONS = set(ACTIONS)
 
 class HeuristicPolicyError(Exception):
     """Raised when the heuristic decision policy cannot be applied safely."""
-
 
 
 @dataclass
@@ -88,42 +89,16 @@ def get_default_policy_config() -> PolicyConfig:
     return PolicyConfig.from_policy_settings(settings.policy)
 
 
-def _validate_supported_actions() -> None:
-    """Validate that the centralized action catalog matches policy expectations."""
-    expected_actions = {"do_nothing", "buy_m1_future", "shift_production"}
-    if SUPPORTED_ACTIONS != expected_actions:
-        raise HeuristicPolicyError(
-            f"SUPPORTED_ACTIONS does not match the expected policy actions: {sorted(expected_actions)}"
-        )
-
-
 # =========================
 # Validation helpers
 # =========================
 
 def _validate_input_dataframe(df: pd.DataFrame) -> pd.DataFrame:
-    """Validate the basic structure of the policy input dataframe."""
-    if df.empty:
-        raise HeuristicPolicyError("Input dataframe is empty.")
-
-    if DATE_COLUMN not in df.columns:
-        raise HeuristicPolicyError(
-            f"Input dataframe must contain a '{DATE_COLUMN}' column."
-        )
-
-    validated_df = df.copy()
-    validated_df[DATE_COLUMN] = pd.to_datetime(validated_df[DATE_COLUMN], errors="coerce")
-
-    if validated_df[DATE_COLUMN].isna().any():
-        invalid_count = int(validated_df[DATE_COLUMN].isna().sum())
-        raise HeuristicPolicyError(
-            f"Found {invalid_count} invalid date values in policy input dataframe."
-        )
-
-    if validated_df[DATE_COLUMN].duplicated().any():
-        raise HeuristicPolicyError("Policy input dataframe contains duplicated dates.")
-
-    return validated_df.sort_values(DATE_COLUMN).reset_index(drop=True)
+    """Validate and sort the policy input dataframe."""
+    try:
+        return validate_and_sort_by_date(df, df_name="heuristic policy input")
+    except ValidationError as exc:
+        raise HeuristicPolicyError(str(exc)) from exc
 
 
 
@@ -234,7 +209,7 @@ def apply_heuristic_policy(
     - human-readable explanation
     """
     config = get_default_policy_config() if config is None else config
-    _validate_supported_actions()
+    validate_action_catalog()
 
     policy_df = _validate_input_dataframe(df)
     _validate_required_columns(policy_df, config)

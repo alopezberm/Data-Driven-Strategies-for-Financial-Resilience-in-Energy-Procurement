@@ -21,6 +21,7 @@ from src.config.constants import (
     PRIMARY_FUTURE_COLUMN,
     Q50_COLUMN,
     Q90_COLUMN,
+    validate_action_catalog,
 )
 from src.config.settings import RLSettings, get_default_settings
 
@@ -60,9 +61,9 @@ class RLEnvironmentConfig:
             weekend_column="is_weekend",
             holiday_column="Is_national_holiday",
             action_column="action",
-            risk_aversion=0.0,
-            hedge_cost_penalty=0.0,
-            shift_penalty=2.0,
+            risk_aversion=settings.risk_aversion,
+            hedge_cost_penalty=settings.hedge_cost_penalty,
+            shift_penalty=settings.heuristic_shift_threshold,
             action_penalty=0.0,
         )
 
@@ -81,19 +82,6 @@ def _get_config(config: RLEnvironmentConfig | None) -> RLEnvironmentConfig:
 
 
 
-def _validate_action_catalog() -> None:
-    """Validate the centralized action catalog used by the RL environment."""
-    expected_actions = {
-        ACTION_DO_NOTHING,
-        ACTION_BUY_M1_FUTURE,
-        ACTION_SHIFT_PRODUCTION,
-    }
-    if len(ACTIONS) < 3 or set(ACTIONS[:3]) != expected_actions:
-        raise RLEnvironmentError(
-            "Centralized ACTIONS constant must contain the expected RL action labels in the first three positions."
-        )
-
-
 class EnergyRLEnvironment:
     """
     Simple step-based environment for sequential decision making.
@@ -108,7 +96,7 @@ class EnergyRLEnvironment:
         df: pd.DataFrame,
         config: RLEnvironmentConfig | None = None,
     ):
-        _validate_action_catalog()
+        validate_action_catalog()
         self.config = _get_config(config)
         self.df = self._validate_df(df)
 
@@ -176,12 +164,9 @@ class EnergyRLEnvironment:
             raise RLEnvironmentError("Episode already finished. Call reset().")
         self._validate_action(action)
 
-        current_row = self.df.iloc[self.current_step]
-
         reward = self._compute_reward(action)
 
         row = self.df.iloc[self.current_step]
-        
         info = {
             "step": self.current_step,
             "action": action,

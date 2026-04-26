@@ -93,7 +93,6 @@ ALLOW_SHIFT_ON_HOLIDAYS = True
 
 TAIL_VS_FUTURE_ABS_THRESHOLD = 5.0
 TAIL_VS_CENTRAL_ABS_THRESHOLD = 3.0
-ALLOW_SHIFT_ON_WEEKENDS_RULE = True
 
 
 # =========================
@@ -160,6 +159,18 @@ DEFAULT_SMALL_FIGURE_HEIGHT = 5
 PROJECT_NAME = "Data-Driven Strategies for Financial Resilience in Energy Procurement"
 PROJECT_SHORT_NAME = "group17_tailrisk_solutions"
 COURSE_NAME = "Advanced Business Analytics"
+
+
+_EXPECTED_ACTIONS = {"do_nothing", "buy_m1_future", "shift_production"}
+
+
+def validate_action_catalog() -> None:
+    """Raise ValueError if the ACTIONS catalog has drifted from the expected set."""
+    if len(ACTIONS) < 3 or set(ACTIONS[:3]) != _EXPECTED_ACTIONS:
+        raise ValueError(
+            f"ACTIONS catalog is inconsistent. Expected first three entries to be "
+            f"{sorted(_EXPECTED_ACTIONS)}, got {ACTIONS[:3]}."
+        )
 
 
 if __name__ == "__main__":

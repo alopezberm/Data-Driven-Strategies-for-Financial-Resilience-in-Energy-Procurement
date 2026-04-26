@@ -25,6 +25,7 @@ from src.config.constants import (
     TARGET_COLUMN,
 )
 from src.config.settings import TrainingSettings, get_default_settings
+from src.utils.validation import ValidationError, validate_and_sort_by_date
 
 
 
@@ -148,33 +149,16 @@ class QuantileModelConfig:
 
 
 def _validate_input_dataframe(df: pd.DataFrame, target_column: str) -> pd.DataFrame:
-    """Validate input dataframe and standardize its date column."""
-    if df.empty:
-        raise QuantileModelError("Input dataframe is empty.")
-
-    if DATE_COLUMN not in df.columns:
-        raise QuantileModelError(
-            f"Input dataframe must contain a '{DATE_COLUMN}' column."
-        )
-
-    if target_column not in df.columns:
+    """Validate and sort a time-series input dataframe."""
+    try:
+        result_df = validate_and_sort_by_date(df, df_name="quantile model input")
+    except ValidationError as exc:
+        raise QuantileModelError(str(exc)) from exc
+    if target_column not in result_df.columns:
         raise QuantileModelError(
             f"Input dataframe must contain target column '{target_column}'."
         )
-
-    df = df.copy()
-    df[DATE_COLUMN] = pd.to_datetime(df[DATE_COLUMN], errors="coerce")
-
-    if df[DATE_COLUMN].isna().any():
-        invalid_count = int(df[DATE_COLUMN].isna().sum())
-        raise QuantileModelError(
-            f"Found {invalid_count} invalid date values in input dataframe."
-        )
-
-    if df[DATE_COLUMN].duplicated().any():
-        raise QuantileModelError("Input dataframe contains duplicated dates.")
-
-    return df.sort_values(DATE_COLUMN).reset_index(drop=True)
+    return result_df
 
 
 
@@ -424,25 +408,6 @@ def summarize_quantile_results(results: list[QuantileModelResults]) -> pd.DataFr
 
 
 
-def combine_quantile_predictions(results: list[QuantileModelResults]) -> pd.DataFrame:
-    """
-    Combine multiple quantile predictions into a single dataframe for plotting / analysis.
-
-    Assumes all results were generated on the same test index.
-    """
-    if not results:
-        raise QuantileModelError("results list cannot be empty.")
-
-    combined_df = pd.DataFrame(index=results[0].y_true.index)
-    combined_df["y_true"] = results[0].y_true
-
-    for result in sorted(results, key=lambda x: x.quantile):
-        combined_df[f"q_{result.quantile}"] = result.y_pred
-
-    return combined_df
-
-
-
 if __name__ == "__main__":
     date_index = pd.date_range("2024-01-01", periods=120, freq="D")
     base_series = np.linspace(50, 90, 120) + 5 * np.sin(np.arange(120) / 7)
@@ -500,7 +465,5 @@ if __name__ == "__main__":
 
     results_list, _, _ = train_quantile_models_from_config(train_example, test_example, config=config)
     summary_df = summarize_quantile_results(results_list)
-    combined_df = combine_quantile_predictions(results_list)
 
     print(summary_df)
-    print(combined_df.head())

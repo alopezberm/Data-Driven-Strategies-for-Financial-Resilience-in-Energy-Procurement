@@ -136,9 +136,15 @@ def validate_and_sort_by_date(
     df_name: str = "dataframe",
 ) -> pd.DataFrame:
     """Validate, parse, ensure uniqueness, and sort a dataframe by its date column."""
+    check_non_empty_dataframe(df, df_name=df_name)
     result_df = check_parseable_dates(df, date_column=date_column, df_name=df_name)
     check_unique_dates(result_df, date_column=date_column, df_name=df_name)
     return result_df.sort_values(date_column).reset_index(drop=True)
+
+
+def format_quantile_column(quantile: float) -> str:
+    """Format a quantile value into the project's column naming convention (e.g. 0.9 → 'q_0.9')."""
+    return f"q_{quantile:g}"
 
 
 if __name__ == "__main__":

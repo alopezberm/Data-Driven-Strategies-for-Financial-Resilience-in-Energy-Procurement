@@ -10,10 +10,8 @@ from __future__ import annotations
 
 import pandas as pd
 
-from src.config.paths import HOLIDAYS_RAW_FILE, INTERIM_DATA_DIR
+from src.config.paths import HOLIDAYS_CLEAN_FILE, HOLIDAYS_RAW_FILE
 
-
-HOLIDAYS_CLEAN_FILE = INTERIM_DATA_DIR / "holidays_clean.csv"
 
 POSSIBLE_HOLIDAY_FLAG_COLUMNS = [
     "Is_national_holiday",

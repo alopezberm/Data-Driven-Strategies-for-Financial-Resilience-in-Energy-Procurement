@@ -22,8 +22,11 @@ from src.config.constants import (
     PRIMARY_FUTURE_COLUMN,
     SPOT_PRICE_COLUMN,
     STRATEGY_HEURISTIC_POLICY,
+    validate_action_catalog,
 )
 from src.config.settings import SimulationSettings, TrainingSettings, get_default_settings
+from src.backtesting._simulation_utils import SimulationUtilsError, ensure_volume_column
+from src.utils.validation import ValidationError, validate_and_sort_by_date
 
 
 DEFAULT_ACTION_COLUMN = "recommended_action"
@@ -86,19 +89,6 @@ def get_default_policy_simulation_config() -> PolicySimulationConfig:
     )
 
 
-def _validate_action_catalog() -> None:
-    """Validate the centralized action catalog used by the policy simulator."""
-    expected_actions = {
-        ACTION_DO_NOTHING,
-        ACTION_BUY_M1_FUTURE,
-        ACTION_SHIFT_PRODUCTION,
-    }
-    if len(ACTIONS) < 3 or set(ACTIONS[:3]) != expected_actions:
-        raise PolicySimulationError(
-            "Centralized ACTIONS constant must contain the expected policy action labels in the first three positions."
-        )
-
-
 # =========================
 # Validation helpers
 # =========================
@@ -108,70 +98,34 @@ def _validate_input_dataframe(
     config: PolicySimulationConfig,
 ) -> pd.DataFrame:
     """Validate input data and standardize the date column."""
-    if df.empty:
-        raise PolicySimulationError("Input dataframe is empty.")
-
-    required_columns = [
-        DATE_COLUMN,
-        config.action_column,
-        config.spot_column,
-    ]
-    missing_columns = [column for column in required_columns if column not in df.columns]
-    if missing_columns:
-        raise PolicySimulationError(
-            f"Missing required columns for policy simulation: {missing_columns}"
-        )
-
-    validated_df = df.copy()
-    validated_df[DATE_COLUMN] = pd.to_datetime(validated_df[DATE_COLUMN], errors="coerce")
-
-    if validated_df[DATE_COLUMN].isna().any():
-        invalid_count = int(validated_df[DATE_COLUMN].isna().sum())
-        raise PolicySimulationError(
-            f"Found {invalid_count} invalid date values in policy simulation input."
-        )
-
-    if validated_df[DATE_COLUMN].duplicated().any():
-        raise PolicySimulationError("Input dataframe contains duplicated dates.")
-
+    for col in [config.action_column, config.spot_column]:
+        if col not in df.columns:
+            raise PolicySimulationError(
+                f"Missing required column for policy simulation: '{col}'"
+            )
     if not 0 <= config.hedge_ratio_on_buy_future <= 1:
         raise PolicySimulationError("hedge_ratio_on_buy_future must be between 0 and 1.")
-
     if not 0 <= config.shift_fraction <= 1:
         raise PolicySimulationError("shift_fraction must be between 0 and 1.")
-
+    try:
+        validated_df = validate_and_sort_by_date(df, df_name="policy simulation input")
+    except ValidationError as exc:
+        raise PolicySimulationError(str(exc)) from exc
     invalid_actions = set(validated_df[config.action_column].dropna().unique()) - SUPPORTED_POLICY_ACTIONS
     if invalid_actions:
         raise PolicySimulationError(
             f"Unsupported policy actions found: {sorted(invalid_actions)}"
         )
-
-    return validated_df.sort_values(DATE_COLUMN).reset_index(drop=True)
+    return validated_df
 
 
 
 def _ensure_volume_column(df: pd.DataFrame, config: PolicySimulationConfig) -> pd.DataFrame:
     """Ensure a valid daily energy volume column exists."""
-    result_df = df.copy()
-
-    if config.volume_column not in result_df.columns:
-        result_df[config.volume_column] = config.default_daily_volume
-
-    result_df[config.volume_column] = pd.to_numeric(
-        result_df[config.volume_column], errors="coerce"
-    )
-
-    if result_df[config.volume_column].isna().any():
-        raise PolicySimulationError(
-            f"Column '{config.volume_column}' contains invalid or missing volumes."
-        )
-
-    if (result_df[config.volume_column] < 0).any():
-        raise PolicySimulationError(
-            f"Column '{config.volume_column}' contains negative volumes."
-        )
-
-    return result_df
+    try:
+        return ensure_volume_column(df, config.volume_column, config.default_daily_volume)
+    except SimulationUtilsError as exc:
+        raise PolicySimulationError(str(exc)) from exc
 
 
 
@@ -191,14 +145,9 @@ def _validate_future_column_if_needed(df: pd.DataFrame, config: PolicySimulation
 def _simulate_policy_row(row: pd.Series, config: PolicySimulationConfig) -> dict[str, object]:
     """Translate one policy action into cost components."""
     action = row[config.action_column]
-    spot_price = pd.to_numeric(pd.Series([row[config.spot_column]]), errors="coerce").iloc[0]
-    volume = pd.to_numeric(pd.Series([row[config.volume_column]]), errors="coerce").iloc[0]
+    spot_price = float(row[config.spot_column])
+    volume = float(row[config.volume_column])
     reason = row.get(config.reason_column, pd.NA)
-
-    if pd.isna(spot_price):
-        raise PolicySimulationError("Encountered invalid spot price during policy simulation.")
-    if pd.isna(volume):
-        raise PolicySimulationError("Encountered invalid energy volume during policy simulation.")
 
     result = {
         "action_taken": action,
@@ -219,11 +168,12 @@ def _simulate_policy_row(row: pd.Series, config: PolicySimulationConfig) -> dict
         return result
 
     if action == ACTION_BUY_M1_FUTURE:
-        future_price = pd.to_numeric(pd.Series([row.get(config.future_column, pd.NA)]), errors="coerce").iloc[0]
-        if pd.isna(future_price):
+        raw_future = row.get(config.future_column, pd.NA)
+        if pd.isna(raw_future):
             raise PolicySimulationError(
                 "Encountered 'buy_m1_future' action but the futures price is missing or invalid."
             )
+        future_price = float(raw_future)
 
         hedged_volume = float(volume) * config.hedge_ratio_on_buy_future
         spot_volume = float(volume) - hedged_volume
@@ -279,7 +229,7 @@ def simulate_policy_strategy(
     cost components for transparent backtesting.
     """
     config = get_default_policy_simulation_config() if config is None else config
-    _validate_action_catalog()
+    validate_action_catalog()
 
     simulation_df = _validate_input_dataframe(df, config)
     simulation_df = _ensure_volume_column(simulation_df, config)

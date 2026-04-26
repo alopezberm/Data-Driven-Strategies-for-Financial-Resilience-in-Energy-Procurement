@@ -13,6 +13,7 @@ from typing import Any
 import pandas as pd
 
 from src.config.constants import DATE_COLUMN
+from src.utils.validation import ValidationError, validate_and_sort_by_date
 
 
 class PredictError(Exception):
@@ -24,25 +25,11 @@ class PredictError(Exception):
 # =========================
 
 def _validate_input_dataframe(df: pd.DataFrame) -> pd.DataFrame:
-    """Validate that prediction input data is non-empty and contains the configured date column."""
-    if df.empty:
-        raise PredictError("Input dataframe is empty.")
-
-    if DATE_COLUMN not in df.columns:
-        raise PredictError(
-            f"Input dataframe must contain a '{DATE_COLUMN}' column."
-        )
-
-    result_df = df.copy()
-    result_df[DATE_COLUMN] = pd.to_datetime(result_df[DATE_COLUMN], errors="coerce")
-
-    if result_df[DATE_COLUMN].isna().any():
-        invalid_count = int(result_df[DATE_COLUMN].isna().sum())
-        raise PredictError(
-            f"Found {invalid_count} invalid date values in prediction input dataframe."
-        )
-
-    return result_df.sort_values(DATE_COLUMN).reset_index(drop=True)
+    """Validate and sort a prediction input dataframe."""
+    try:
+        return validate_and_sort_by_date(df, df_name="prediction input")
+    except ValidationError as exc:
+        raise PredictError(str(exc)) from exc
 
 
 

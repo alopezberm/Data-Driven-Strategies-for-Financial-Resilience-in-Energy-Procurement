@@ -12,6 +12,7 @@ import pandas as pd
 
 from src.config.constants import DATE_COLUMN, DEFAULT_ROLLING_WINDOWS, PRIMARY_FUTURE_COLUMN, TARGET_COLUMN
 from src.config.settings import TrainingSettings, get_default_settings
+from src.utils.validation import ValidationError, validate_and_sort_by_date
 
 
 def get_default_rolling_config(training_settings: TrainingSettings | None = None) -> dict[str, dict[str, list[int]]]:
@@ -57,38 +58,11 @@ class RollingFeaturesError(Exception):
 # =========================
 
 def _validate_input_dataframe(df: pd.DataFrame) -> pd.DataFrame:
-    """
-    Validate that the input dataframe is suitable for rolling feature generation.
-
-    Returns
-    -------
-    pd.DataFrame
-        Sorted copy of the dataframe.
-    """
-    if df.empty:
-        raise RollingFeaturesError("Input dataframe is empty.")
-
-    if DATE_COLUMN not in df.columns:
-        raise RollingFeaturesError(
-            f"Input dataframe must contain a '{DATE_COLUMN}' column."
-        )
-
-    df = df.copy()
-    df[DATE_COLUMN] = pd.to_datetime(df[DATE_COLUMN], errors="coerce")
-
-    if df[DATE_COLUMN].isna().any():
-        invalid_count = int(df[DATE_COLUMN].isna().sum())
-        raise RollingFeaturesError(
-            f"Found {invalid_count} invalid date values while building rolling features."
-        )
-
-    if df[DATE_COLUMN].duplicated().any():
-        raise RollingFeaturesError(
-            "Input dataframe contains duplicated dates. Rolling features require unique chronological rows."
-        )
-
-    df = df.sort_values(DATE_COLUMN).reset_index(drop=True)
-    return df
+    """Validate and sort a time-series input dataframe."""
+    try:
+        return validate_and_sort_by_date(df, df_name="rolling features input")
+    except ValidationError as exc:
+        raise RollingFeaturesError(str(exc)) from exc
 
 
 
