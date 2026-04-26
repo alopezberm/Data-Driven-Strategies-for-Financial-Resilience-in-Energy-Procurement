@@ -35,3 +35,5 @@ reports/executive_summary/*.pdf
 
 # Environment files (optional)
 .env
+__pycache__/
+*.pyc
