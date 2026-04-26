@@ -83,6 +83,12 @@ MIN_REL_RISK_PREMIUM_TO_HEDGE = 0.10
 MIN_ABS_RISK_PREMIUM_TO_SHIFT = 12.0
 MIN_REL_RISK_PREMIUM_TO_SHIFT = 0.15
 
+# Thresholds for the extended production actions
+MIN_ABS_RISK_PREMIUM_TO_INCREASE = 0.0   # always increase when price is low vs. forecast
+MIN_ABS_RISK_PREMIUM_TO_DECREASE = 10.0  # decrease production when tail risk is high
+MIN_ABS_RISK_PREMIUM_TO_BUY_M2 = 12.0   # buy M+2 when mid-term tail risk is elevated
+MIN_ABS_RISK_PREMIUM_TO_BUY_M3 = 18.0   # buy M+3 only under severe long-term risk
+
 ALLOW_SHIFT_ON_WEEKENDS = True
 ALLOW_SHIFT_ON_HOLIDAYS = True
 
@@ -96,18 +102,49 @@ TAIL_VS_CENTRAL_ABS_THRESHOLD = 3.0
 
 
 # =========================
+# Factory / production model
+# =========================
+
+# Discrete production levels: from 50% to 100% of nominal capacity, step 10%
+PRODUCTION_LEVELS = [0.5, 0.6, 0.7, 0.8, 0.9, 1.0]
+DEFAULT_PRODUCTION_LEVEL = 1.0
+PRODUCTION_STEP = 0.1  # each increase / decrease action moves by 10%
+
+# Energy consumption model: total_load = base_load + variable_load * production_level
+# base_load is the fixed overhead (plant lighting, pumps, HVAC) — present even at min output
+# variable_load is the process-driven component that scales with production
+FACTORY_BASE_LOAD = 0.3   # 30 % of nominal capacity, always consumed
+FACTORY_VARIABLE_LOAD = 0.7  # 70 % of nominal capacity, linear with production_level
+
+# Maximum daily purchase per futures tenor (fraction of daily volume)
+MAX_HEDGE_FRACTION_M1 = 1.0
+MAX_HEDGE_FRACTION_M2 = 0.5
+MAX_HEDGE_FRACTION_M3 = 0.25
+
+
+# =========================
 # Actions & strategies
 # =========================
 
+# The first three entries are the original action set and are protected by
+# validate_action_catalog(). New actions are appended after position 2.
 ACTIONS = [
-    "do_nothing",
-    "buy_m1_future",
-    "shift_production",
+    "do_nothing",          # 0 — baseline: buy everything on spot
+    "buy_m1_future",       # 1 — lock in front-month futures price
+    "shift_production",    # 2 — legacy: shift flexible load off-peak (kept for compat)
+    "increase_production", # 3 — raise output +10 % (run more when prices are low)
+    "decrease_production", # 4 — cut output -10 % (avoid high-cost periods)
+    "buy_m2_future",       # 5 — lock in month+2 futures
+    "buy_m3_future",       # 6 — lock in month+3 futures
 ]
 
 ACTION_DO_NOTHING = ACTIONS[0]
 ACTION_BUY_M1_FUTURE = ACTIONS[1]
 ACTION_SHIFT_PRODUCTION = ACTIONS[2]
+ACTION_INCREASE_PRODUCTION = ACTIONS[3]
+ACTION_DECREASE_PRODUCTION = ACTIONS[4]
+ACTION_BUY_M2_FUTURE = ACTIONS[5]
+ACTION_BUY_M3_FUTURE = ACTIONS[6]
 
 STRATEGY_SPOT_ONLY = "spot_only"
 STRATEGY_STATIC_HEDGE = "static_hedge"
