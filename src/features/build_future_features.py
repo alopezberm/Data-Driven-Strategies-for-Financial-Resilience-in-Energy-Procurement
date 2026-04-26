@@ -19,6 +19,7 @@ from src.config.constants import (
     PRIMARY_OPEN_INTEREST_COLUMN,
     SPOT_PRICE_COLUMN,
 )
+from src.utils.validation import ValidationError, validate_and_sort_by_date
 
 
 class FutureFeaturesError(Exception):
@@ -30,38 +31,11 @@ class FutureFeaturesError(Exception):
 # =========================
 
 def _validate_input_dataframe(df: pd.DataFrame) -> pd.DataFrame:
-    """
-    Validate that the input dataframe is suitable for futures feature generation.
-
-    Returns
-    -------
-    pd.DataFrame
-        Sorted copy of the dataframe.
-    """
-    if df.empty:
-        raise FutureFeaturesError("Input dataframe is empty.")
-
-    if DATE_COLUMN not in df.columns:
-        raise FutureFeaturesError(
-            f"Input dataframe must contain a '{DATE_COLUMN}' column."
-        )
-
-    df = df.copy()
-    df[DATE_COLUMN] = pd.to_datetime(df[DATE_COLUMN], errors="coerce")
-
-    if df[DATE_COLUMN].isna().any():
-        invalid_count = int(df[DATE_COLUMN].isna().sum())
-        raise FutureFeaturesError(
-            f"Found {invalid_count} invalid date values while building futures features."
-        )
-
-    if df[DATE_COLUMN].duplicated().any():
-        raise FutureFeaturesError(
-            "Input dataframe contains duplicated dates. Futures features require unique chronological rows."
-        )
-
-    df = df.sort_values(DATE_COLUMN).reset_index(drop=True)
-    return df
+    """Validate and sort a time-series input dataframe."""
+    try:
+        return validate_and_sort_by_date(df, df_name="futures features input")
+    except ValidationError as exc:
+        raise FutureFeaturesError(str(exc)) from exc
 
 
 # =========================

@@ -18,6 +18,7 @@ from src.config.constants import (
     ACTION_BUY_M1_FUTURE,
     ACTION_DO_NOTHING,
     ACTION_SHIFT_PRODUCTION,
+    validate_action_catalog,
 )
 from src.config.settings import RLSettings, get_default_settings
 from src.rl.rl_environment import EnergyRLEnvironment
@@ -86,19 +87,6 @@ def _get_agent_config(config: RLAgentConfig | None) -> RLAgentConfig:
 
 
 
-def _validate_action_catalog() -> None:
-    """Validate that the centralized ACTIONS catalog matches the RL action encoding."""
-    expected_action_labels = {
-        ACTION_DO_NOTHING,
-        ACTION_BUY_M1_FUTURE,
-        ACTION_SHIFT_PRODUCTION,
-    }
-    if len(ACTIONS) < 3 or set(ACTIONS[:3]) != expected_action_labels:
-        raise RLAgentError(
-            "Centralized ACTIONS constant must contain the expected RL action labels in the first three positions."
-        )
-
-
 def _validate_encoded_action(action: int, action_space: tuple[int, ...]) -> None:
     """Validate that a chosen encoded action belongs to the configured action space."""
     if action not in action_space:
@@ -116,7 +104,7 @@ class BaseRLAgent:
     """
 
     def __init__(self, config: RLAgentConfig | None = None):
-        _validate_action_catalog()
+        validate_action_catalog()
         self.config = _get_agent_config(config)
         self._rng = random.Random(self.config.random_seed)
 

@@ -22,6 +22,8 @@ from src.config.constants import (
     STRATEGY_STATIC_HEDGE,
 )
 from src.config.settings import SimulationSettings, TrainingSettings, get_default_settings
+from src.backtesting._simulation_utils import SimulationUtilsError, ensure_volume_column
+from src.utils.validation import ValidationError, validate_and_sort_by_date
 
 
 class BaselineSimulationError(Exception):
@@ -75,67 +77,25 @@ def get_default_baseline_simulation_config() -> BaselineSimulationConfig:
 
 def _validate_input_dataframe(df: pd.DataFrame, config: BaselineSimulationConfig) -> pd.DataFrame:
     """Validate the backtesting input dataframe and standardize its date column."""
-    if df.empty:
-        raise BaselineSimulationError("Input dataframe is empty.")
-
-    if DATE_COLUMN not in df.columns:
+    if config.spot_column not in df.columns:
         raise BaselineSimulationError(
-            f"Input dataframe must contain a '{DATE_COLUMN}' column."
+            f"Missing required column for baseline simulation: '{config.spot_column}'"
         )
-
-    required_columns = [config.spot_column]
-    missing_columns = [column for column in required_columns if column not in df.columns]
-    if missing_columns:
-        raise BaselineSimulationError(
-            f"Missing required columns for baseline simulation: {missing_columns}"
-        )
-
-    validated_df = df.copy()
-    validated_df[DATE_COLUMN] = pd.to_datetime(validated_df[DATE_COLUMN], errors="coerce")
-
-    if validated_df[DATE_COLUMN].isna().any():
-        invalid_count = int(validated_df[DATE_COLUMN].isna().sum())
-        raise BaselineSimulationError(
-            f"Found {invalid_count} invalid date values in baseline simulation input."
-        )
-
-    if validated_df[DATE_COLUMN].duplicated().any():
-        raise BaselineSimulationError("Input dataframe contains duplicated dates.")
-
-    if config.hedge_ratio < 0 or config.hedge_ratio > 1:
+    if not 0 <= config.hedge_ratio <= 1:
         raise BaselineSimulationError("hedge_ratio must be between 0 and 1.")
-
-    return validated_df.sort_values(DATE_COLUMN).reset_index(drop=True)
+    try:
+        return validate_and_sort_by_date(df, df_name="baseline simulation input")
+    except ValidationError as exc:
+        raise BaselineSimulationError(str(exc)) from exc
 
 
 
 def _ensure_volume_column(df: pd.DataFrame, config: BaselineSimulationConfig) -> pd.DataFrame:
-    """
-    Ensure a volume column exists.
-
-    If the project does not yet include explicit plant load / production volume,
-    we simulate costs per standardized 1 MWh unit by default.
-    """
-    result_df = df.copy()
-
-    if config.volume_column not in result_df.columns:
-        result_df[config.volume_column] = config.default_daily_volume
-
-    result_df[config.volume_column] = pd.to_numeric(
-        result_df[config.volume_column], errors="coerce"
-    )
-
-    if result_df[config.volume_column].isna().any():
-        raise BaselineSimulationError(
-            f"Column '{config.volume_column}' contains invalid or missing volumes."
-        )
-
-    if (result_df[config.volume_column] < 0).any():
-        raise BaselineSimulationError(
-            f"Column '{config.volume_column}' contains negative volumes."
-        )
-
-    return result_df
+    """Ensure a valid daily energy volume column exists."""
+    try:
+        return ensure_volume_column(df, config.volume_column, config.default_daily_volume)
+    except SimulationUtilsError as exc:
+        raise BaselineSimulationError(str(exc)) from exc
 
 
 # =========================

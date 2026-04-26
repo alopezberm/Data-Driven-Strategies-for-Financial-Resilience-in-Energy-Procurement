@@ -15,9 +15,10 @@ import pandas as pd
 
 from src.config.constants import (
     ACTIONS,
-    ALLOW_SHIFT_ON_WEEKENDS_RULE,
+    ALLOW_SHIFT_ON_WEEKENDS,
     TAIL_VS_CENTRAL_ABS_THRESHOLD,
     TAIL_VS_FUTURE_ABS_THRESHOLD,
+    validate_action_catalog,
 )
 from src.config.settings import PolicySettings, get_default_settings
 
@@ -29,19 +30,6 @@ class ActionRuleError(Exception):
 ACTION_DO_NOTHING = ACTIONS[0]
 ACTION_BUY_M1_FUTURE = ACTIONS[1]
 ACTION_SHIFT_PRODUCTION = ACTIONS[2]
-
-
-def _validate_action_catalog() -> None:
-    """Validate the centralized action catalog used by this module."""
-    expected_actions = {
-        ACTION_DO_NOTHING,
-        ACTION_BUY_M1_FUTURE,
-        ACTION_SHIFT_PRODUCTION,
-    }
-    if len(ACTIONS) < 3 or set(ACTIONS[:3]) != expected_actions:
-        raise ActionRuleError(
-            "Centralized ACTIONS constant must contain the expected action labels in the first three positions."
-        )
 
 
 # =========================
@@ -58,7 +46,7 @@ class ActionRuleConfig:
     tail_vs_central_abs_threshold: float = TAIL_VS_CENTRAL_ABS_THRESHOLD
 
     # Flags
-    allow_shift_on_weekends: bool = ALLOW_SHIFT_ON_WEEKENDS_RULE
+    allow_shift_on_weekends: bool = ALLOW_SHIFT_ON_WEEKENDS
 
     @classmethod
     def from_policy_settings(cls, policy_settings: PolicySettings) -> "ActionRuleConfig":
@@ -123,7 +111,7 @@ def rule_shift_production(row: pd.Series, config: ActionRuleConfig) -> bool:
 
 def _get_config(config: Optional[ActionRuleConfig]) -> ActionRuleConfig:
     """Return the provided config or a default ActionRuleConfig instance."""
-    _validate_action_catalog()
+    validate_action_catalog()
     return get_default_action_rule_config() if config is None else config
 
 

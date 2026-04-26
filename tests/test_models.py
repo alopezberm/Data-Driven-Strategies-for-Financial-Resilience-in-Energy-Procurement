@@ -27,11 +27,11 @@ from src.models.baseline_models import (
 )
 from src.models.evaluate_model import (
     build_quantile_diagnostics_report,
+    combine_quantile_predictions,
     evaluate_prediction_interval,
     evaluate_quantile_predictions,
 )
 from src.models.quantile_models import (
-    combine_quantile_predictions,
     summarize_quantile_results,
     train_quantile_models,
     train_quantile_models_from_config,

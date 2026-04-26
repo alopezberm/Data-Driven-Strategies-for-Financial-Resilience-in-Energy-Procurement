@@ -39,7 +39,7 @@ def ensure_list(obj: Any) -> list:
         return []
     if isinstance(obj, list):
         return obj
-    if isinstance(obj, tuple) or isinstance(obj, set):
+    if isinstance(obj, (tuple, set)):
         return list(obj)
     return [obj]
 
@@ -59,16 +59,6 @@ def flatten_list(nested: Iterable[Iterable[Any]]) -> list:
 # =========================
 # DataFrame helpers
 # =========================
-
-def check_columns_exist(df: pd.DataFrame, columns: list[str]) -> None:
-    """Raise HelperError if any required columns are missing from the DataFrame."""
-    if not isinstance(df, pd.DataFrame):
-        raise HelperError("Input must be a pandas DataFrame.")
-
-    missing = [column for column in columns if column not in df.columns]
-    if missing:
-        raise HelperError(f"Missing columns: {missing}")
-
 
 def safe_copy(df: pd.DataFrame) -> pd.DataFrame:
     """Return a safe copy of a DataFrame."""

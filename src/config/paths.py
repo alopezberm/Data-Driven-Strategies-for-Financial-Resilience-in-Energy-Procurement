@@ -52,6 +52,7 @@ DAILY_OPERATIONS_ASSUMPTIONS_FILE = EXTERNAL_DATA_DIR / "daily_operations_assump
 
 OMIP_CLEAN_FILE = INTERIM_DATA_DIR / "omip_clean.csv"
 WEATHER_CLEAN_FILE = INTERIM_DATA_DIR / "weather_clean.csv"
+HOLIDAYS_CLEAN_FILE = INTERIM_DATA_DIR / "holidays_clean.csv"
 MERGED_INTERIM_FILE = INTERIM_DATA_DIR / "merged_interim.csv"
 
 # =========================
@@ -63,6 +64,10 @@ MODELING_DATASET_FILE = PROCESSED_DATA_DIR / "modeling_dataset.csv"
 TRAIN_FILE = PROCESSED_DATA_DIR / "train.csv"
 VALIDATION_FILE = PROCESSED_DATA_DIR / "validation.csv"
 TEST_FILE = PROCESSED_DATA_DIR / "test.csv"
+
+TRAIN_FEATURES_FILE = PROCESSED_DATA_DIR / "train_features.csv"
+VALIDATION_FEATURES_FILE = PROCESSED_DATA_DIR / "validation_features.csv"
+TEST_FEATURES_FILE = PROCESSED_DATA_DIR / "test_features.csv"
 
 FEATURE_DICTIONARY_FILE = PROCESSED_DATA_DIR / "feature_dictionary.csv"
 

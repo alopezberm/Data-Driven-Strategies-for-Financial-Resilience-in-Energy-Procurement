@@ -26,6 +26,7 @@ from src.config.constants import (
     DEFAULT_SHIFT_PENALTY_PER_MWH,
     PRIMARY_FUTURE_COLUMN,
     SPOT_PRICE_COLUMN,
+    STRATEGY_RL_POLICY,
 )
 from src.utils.logger import get_logger
 
@@ -37,7 +38,6 @@ class RLPolicySimulationError(Exception):
     """Raised when RL policy simulation cannot be executed safely."""
 
 
-STRATEGY_RL_POLICY = "rl_policy"
 DEFAULT_ACTION_COLUMN = "recommended_action"
 DEFAULT_VOLUME_COLUMN = "daily_energy_mwh"
 SUPPORTED_RL_ACTIONS = {

@@ -28,7 +28,13 @@ from src.config.constants import (
     DEFAULT_REFERENCE_STRATEGY,
     STRATEGY_RL_POLICY,
 )
-from src.config.paths import BACKTESTS_DIR, FIGURES_DIR, POLICIES_DIR, PROCESSED_DATA_DIR
+from src.config.paths import (
+    BACKTESTS_DIR,
+    FIGURES_DIR,
+    POLICIES_DIR,
+    TRAIN_FEATURES_FILE,
+    VALIDATION_FEATURES_FILE,
+)
 from src.utils.logger import get_logger
 from src.models.quantile_models import train_quantile_models, summarize_quantile_results
 from src.models.evaluate_model import build_quantile_diagnostics_report
@@ -60,9 +66,6 @@ from src.visualization.plot_backtest_results import (
     plot_total_cost_bar_chart,
 )
 
-
-TRAIN_FEATURES_FILE = PROCESSED_DATA_DIR / "train_features.csv"
-VALIDATION_FEATURES_FILE = PROCESSED_DATA_DIR / "validation_features.csv"
 
 POLICY_DECISIONS_OUTPUT_FILE = POLICIES_DIR / "validation_policy_decisions.csv"
 SPOT_ONLY_OUTPUT_FILE = BACKTESTS_DIR / "validation_spot_only.csv"

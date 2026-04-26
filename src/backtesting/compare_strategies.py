@@ -15,6 +15,7 @@ from typing import Sequence
 import pandas as pd
 
 from src.config.constants import DATE_COLUMN, DEFAULT_REFERENCE_STRATEGY, STRATEGY_HEURISTIC_POLICY, STRATEGY_SPOT_ONLY, STRATEGY_STATIC_HEDGE
+from src.utils.validation import ValidationError, validate_and_sort_by_date
 
 
 class StrategyComparisonError(Exception):
@@ -29,61 +30,32 @@ REQUIRED_SIMULATION_COLUMNS = {
 }
 
 
-def _validate_strategy_catalog() -> None:
-    """Validate the centralized strategy catalog used by this module."""
-    expected_strategies = {
-        STRATEGY_SPOT_ONLY,
-        STRATEGY_STATIC_HEDGE,
-        STRATEGY_HEURISTIC_POLICY,
-    }
-    if {STRATEGY_SPOT_ONLY, STRATEGY_STATIC_HEDGE, STRATEGY_HEURISTIC_POLICY} != expected_strategies:
-        raise StrategyComparisonError(
-            "Centralized strategy constants are inconsistent."
-        )
-
-
 # =========================
 # Validation helpers
 # =========================
 
 def _validate_single_simulation_df(simulation_df: pd.DataFrame) -> pd.DataFrame:
     """Validate one simulated strategy dataframe."""
-    if simulation_df.empty:
-        raise StrategyComparisonError("One of the simulation dataframes is empty.")
-
     missing_columns = REQUIRED_SIMULATION_COLUMNS - set(simulation_df.columns)
     if missing_columns:
         raise StrategyComparisonError(
             f"Simulation dataframe is missing required columns: {sorted(missing_columns)}"
         )
-
-    validated_df = simulation_df.copy()
-    validated_df[DATE_COLUMN] = pd.to_datetime(validated_df[DATE_COLUMN], errors="coerce")
-
-    if validated_df[DATE_COLUMN].isna().any():
-        invalid_count = int(validated_df[DATE_COLUMN].isna().sum())
-        raise StrategyComparisonError(
-            f"Found {invalid_count} invalid date values in a simulation dataframe."
-        )
-
-    if validated_df[DATE_COLUMN].duplicated().any():
-        raise StrategyComparisonError(
-            "A simulation dataframe contains duplicated dates."
-        )
-
+    try:
+        validated_df = validate_and_sort_by_date(simulation_df, df_name="simulation dataframe")
+    except ValidationError as exc:
+        raise StrategyComparisonError(str(exc)) from exc
     strategy_names = validated_df["strategy_name"].dropna().unique()
     if len(strategy_names) != 1:
         raise StrategyComparisonError(
             "Each simulation dataframe must contain exactly one strategy_name."
         )
-
-    return validated_df.sort_values(DATE_COLUMN).reset_index(drop=True)
+    return validated_df
 
 
 
 def _validate_simulation_collection(simulation_dfs: Sequence[pd.DataFrame]) -> list[pd.DataFrame]:
     """Validate a collection of simulated strategy dataframes."""
-    _validate_strategy_catalog()
     if not simulation_dfs:
         raise StrategyComparisonError("simulation_dfs cannot be empty.")
 

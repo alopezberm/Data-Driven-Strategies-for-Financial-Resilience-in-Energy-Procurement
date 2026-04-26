@@ -45,6 +45,8 @@ def _validate_metric_inputs(
     y_pred_array = y_pred_array[valid_mask]
 
     return y_true_array, y_pred_array
+
+
 def compute_bias(y_true: pd.Series | np.ndarray, y_pred: pd.Series | np.ndarray) -> float:
     """Compute mean forecast bias as the average prediction error (y_pred - y_true)."""
     y_true_array, y_pred_array = _validate_metric_inputs(y_true, y_pred)

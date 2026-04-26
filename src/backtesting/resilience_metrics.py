@@ -19,6 +19,7 @@ from src.config.constants import (
     STRATEGY_SPOT_ONLY,
     STRATEGY_STATIC_HEDGE,
 )
+from src.utils.validation import ValidationError, validate_and_sort_by_date
 
 
 REQUIRED_SIMULATION_COLUMNS = {
@@ -27,19 +28,6 @@ REQUIRED_SIMULATION_COLUMNS = {
     "total_cost",
     "energy_volume_mwh",
 }
-
-
-def _validate_strategy_catalog() -> None:
-    """Validate the centralized strategy catalog used by this module."""
-    expected_strategies = {
-        STRATEGY_SPOT_ONLY,
-        STRATEGY_STATIC_HEDGE,
-        STRATEGY_HEURISTIC_POLICY,
-    }
-    if {STRATEGY_SPOT_ONLY, STRATEGY_STATIC_HEDGE, STRATEGY_HEURISTIC_POLICY} != expected_strategies:
-        raise ResilienceMetricsError(
-            "Centralized strategy constants are inconsistent."
-        )
 
 
 class ResilienceMetricsError(Exception):
@@ -52,48 +40,32 @@ class ResilienceMetricsError(Exception):
 
 def _validate_simulation_df(simulation_df: pd.DataFrame) -> pd.DataFrame:
     """Validate one simulation dataframe and standardize its date column."""
-    if simulation_df.empty:
-        raise ResilienceMetricsError("Simulation dataframe is empty.")
-
     missing_columns = REQUIRED_SIMULATION_COLUMNS - set(simulation_df.columns)
     if missing_columns:
         raise ResilienceMetricsError(
             f"Simulation dataframe is missing required columns: {sorted(missing_columns)}"
         )
-
-    validated_df = simulation_df.copy()
-    validated_df[DATE_COLUMN] = pd.to_datetime(validated_df[DATE_COLUMN], errors="coerce")
-
-    if validated_df[DATE_COLUMN].isna().any():
-        invalid_count = int(validated_df[DATE_COLUMN].isna().sum())
-        raise ResilienceMetricsError(
-            f"Found {invalid_count} invalid date values in simulation dataframe."
-        )
-
-    if validated_df[DATE_COLUMN].duplicated().any():
-        raise ResilienceMetricsError("Simulation dataframe contains duplicated dates.")
+    try:
+        validated_df = validate_and_sort_by_date(simulation_df, df_name="simulation dataframe")
+    except ValidationError as exc:
+        raise ResilienceMetricsError(str(exc)) from exc
 
     validated_df["total_cost"] = pd.to_numeric(validated_df["total_cost"], errors="coerce")
     validated_df["energy_volume_mwh"] = pd.to_numeric(
         validated_df["energy_volume_mwh"], errors="coerce"
     )
-
     if validated_df["total_cost"].isna().any():
         raise ResilienceMetricsError("Simulation dataframe contains invalid total_cost values.")
-
     if validated_df["energy_volume_mwh"].isna().any():
         raise ResilienceMetricsError(
             "Simulation dataframe contains invalid energy_volume_mwh values."
         )
-
-    return validated_df.sort_values(DATE_COLUMN).reset_index(drop=True)
+    return validated_df
 
 
 
 def _validate_simulation_collection(simulation_dfs: Sequence[pd.DataFrame]) -> list[pd.DataFrame]:
     """Validate a collection of simulation dataframes with unique strategy names."""
-    _validate_strategy_catalog()
-
     if not simulation_dfs:
         raise ResilienceMetricsError("simulation_dfs cannot be empty.")
 

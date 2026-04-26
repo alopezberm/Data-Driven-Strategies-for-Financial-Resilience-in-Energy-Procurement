@@ -17,6 +17,7 @@ from sklearn.metrics import mean_absolute_error, mean_squared_error
 
 from src.config.constants import DATE_COLUMN, DEFAULT_FORECAST_HORIZON, TARGET_COLUMN
 from src.config.settings import TrainingSettings, get_default_settings
+from src.utils.validation import ValidationError, validate_and_sort_by_date
 
 
 class BaselineModelError(Exception):
@@ -65,33 +66,16 @@ def get_default_baseline_feature_columns(training_settings: TrainingSettings | N
 # =========================
 
 def _validate_input_dataframe(df: pd.DataFrame, target_column: str) -> pd.DataFrame:
-    """Validate input dataframe and standardize the date column."""
-    if df.empty:
-        raise BaselineModelError("Input dataframe is empty.")
-
-    if DATE_COLUMN not in df.columns:
-        raise BaselineModelError(
-            f"Input dataframe must contain a '{DATE_COLUMN}' column."
-        )
-
-    if target_column not in df.columns:
+    """Validate and sort a time-series input dataframe."""
+    try:
+        result_df = validate_and_sort_by_date(df, df_name="baseline model input")
+    except ValidationError as exc:
+        raise BaselineModelError(str(exc)) from exc
+    if target_column not in result_df.columns:
         raise BaselineModelError(
             f"Input dataframe must contain target column '{target_column}'."
         )
-
-    df = df.copy()
-    df[DATE_COLUMN] = pd.to_datetime(df[DATE_COLUMN], errors="coerce")
-
-    if df[DATE_COLUMN].isna().any():
-        invalid_count = int(df[DATE_COLUMN].isna().sum())
-        raise BaselineModelError(
-            f"Found {invalid_count} invalid date values in input dataframe."
-        )
-
-    if df[DATE_COLUMN].duplicated().any():
-        raise BaselineModelError("Input dataframe contains duplicated dates.")
-
-    return df.sort_values(DATE_COLUMN).reset_index(drop=True)
+    return result_df
 
 
 # =========================
