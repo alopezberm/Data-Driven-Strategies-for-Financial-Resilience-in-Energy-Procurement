@@ -116,6 +116,17 @@ PRODUCTION_STEP = 0.1  # each increase / decrease action moves by 10%
 FACTORY_BASE_LOAD = 0.3   # 30 % of nominal capacity, always consumed
 FACTORY_VARIABLE_LOAD = 0.7  # 70 % of nominal capacity, linear with production_level
 
+# Factory MDP: inventory dynamics, take-or-pay, startup cost, product revenue
+# demand_per_step < max_production (=10) so the agent can build inventory at high output
+FACTORY_INVENTORY_CAPACITY = 100.0    # maximum goods inventory (physical units)
+FACTORY_INVENTORY_MIN = 0.0           # minimum inventory (physical units)
+FACTORY_INITIAL_INVENTORY = 50.0      # starting inventory at episode reset (units)
+FACTORY_DEMAND_PER_STEP = 8.0         # market demand per day (units) — equilibrium at production_level = 0.8
+FACTORY_STORAGE_COST_PER_UNIT = 0.5   # € per unit per day holding cost
+FACTORY_STARTUP_ENERGY_COST = 5.0     # extra MWh consumed when production transitions from 0
+FACTORY_PRODUCT_PRICE = 150.0         # € per unit of goods sold (drives revenue side of reward)
+FACTORY_TAKEORPAY_FRACTION = 0.5      # fraction of base_load committed as take-or-pay baseload
+
 # Maximum daily purchase per futures tenor (fraction of daily volume)
 MAX_HEDGE_FRACTION_M1 = 1.0
 MAX_HEDGE_FRACTION_M2 = 0.5

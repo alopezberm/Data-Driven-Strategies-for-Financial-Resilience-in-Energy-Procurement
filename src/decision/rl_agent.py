@@ -301,6 +301,12 @@ class QLearningAgent(BaseRLAgent):
             "is_holiday": is_holiday,
         }
 
+        # Include inventory_bin when the factory MDP is active.
+        # Binned to {0, 1, 2} so tabular state space stays manageable.
+        if "inventory_bin" in state:
+            raw_bin = _to_float("inventory_bin", state["inventory_bin"])
+            compact_state["inventory_bin"] = float(round(raw_bin))
+
         return tuple(sorted(compact_state.items()))
 
     def _ensure_state(self, state_key: tuple[tuple[str, float], ...]) -> None:
