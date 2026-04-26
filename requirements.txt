@@ -9,4 +9,4 @@ holidays==0.45
 seaborn>=0.12
 jupyter
 ipykernel
-plotly
+plotly==5.22.0

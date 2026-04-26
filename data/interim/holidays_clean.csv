@@ -1,53 +1,53 @@
 date,is_holiday,holiday_name,Is_national_holiday
-2020-01-01,1,New Year's Day,1
-2020-01-06,1,Epiphany,1
-2020-04-10,1,Good Friday,1
-2020-05-01,1,Labor Day,1
-2020-08-15,1,Assumption Day,1
-2020-10-12,1,National Day,1
-2020-12-08,1,Immaculate Conception,1
-2020-12-25,1,Christmas Day,1
-2021-01-01,1,New Year's Day,1
-2021-01-06,1,Epiphany,1
-2021-04-02,1,Good Friday,1
-2021-05-01,1,Labor Day,1
-2021-10-12,1,National Day,1
-2021-11-01,1,All Saints' Day,1
-2021-12-06,1,Constitution Day,1
-2021-12-08,1,Immaculate Conception,1
-2021-12-25,1,Christmas Day,1
-2022-01-01,1,New Year's Day,1
-2022-01-06,1,Epiphany,1
-2022-04-15,1,Good Friday,1
-2022-08-15,1,Assumption Day,1
-2022-10-12,1,National Day,1
-2022-11-01,1,All Saints' Day,1
-2022-12-06,1,Constitution Day,1
-2022-12-08,1,Immaculate Conception,1
-2023-01-06,1,Epiphany,1
-2023-04-07,1,Good Friday,1
-2023-05-01,1,Labor Day,1
-2023-08-15,1,Assumption Day,1
-2023-10-12,1,National Day,1
-2023-11-01,1,All Saints' Day,1
-2023-12-06,1,Constitution Day,1
-2023-12-08,1,Immaculate Conception,1
-2023-12-25,1,Christmas Day,1
-2024-01-01,1,New Year's Day,1
-2024-01-06,1,Epiphany,1
-2024-03-29,1,Good Friday,1
-2024-05-01,1,Labor Day,1
-2024-08-15,1,Assumption Day,1
-2024-10-12,1,National Day,1
-2024-11-01,1,All Saints' Day,1
-2024-12-06,1,Constitution Day,1
-2024-12-25,1,Christmas Day,1
-2025-01-01,1,New Year's Day,1
-2025-01-06,1,Epiphany,1
-2025-04-18,1,Good Friday,1
-2025-05-01,1,Labor Day,1
-2025-08-15,1,Assumption Day,1
-2025-11-01,1,All Saints' Day,1
-2025-12-06,1,Constitution Day,1
-2025-12-08,1,Immaculate Conception,1
-2025-12-25,1,Christmas Day,1
+2020-01-01,1,Año Nuevo,1
+2020-01-06,1,Epifanía del Señor,1
+2020-04-10,1,Viernes Santo,1
+2020-05-01,1,Fiesta del Trabajo,1
+2020-08-15,1,Asunción de la Virgen,1
+2020-10-12,1,Fiesta Nacional de España,1
+2020-12-08,1,Inmaculada Concepción,1
+2020-12-25,1,Natividad del Señor,1
+2021-01-01,1,Año Nuevo,1
+2021-01-06,1,Epifanía del Señor,1
+2021-04-02,1,Viernes Santo,1
+2021-05-01,1,Fiesta del Trabajo,1
+2021-10-12,1,Fiesta Nacional de España,1
+2021-11-01,1,Todos los Santos,1
+2021-12-06,1,Día de la Constitución Española,1
+2021-12-08,1,Inmaculada Concepción,1
+2021-12-25,1,Natividad del Señor,1
+2022-01-01,1,Año Nuevo,1
+2022-01-06,1,Epifanía del Señor,1
+2022-04-15,1,Viernes Santo,1
+2022-08-15,1,Asunción de la Virgen,1
+2022-10-12,1,Fiesta Nacional de España,1
+2022-11-01,1,Todos los Santos,1
+2022-12-06,1,Día de la Constitución Española,1
+2022-12-08,1,Inmaculada Concepción,1
+2023-01-06,1,Epifanía del Señor,1
+2023-04-07,1,Viernes Santo,1
+2023-05-01,1,Fiesta del Trabajo,1
+2023-08-15,1,Asunción de la Virgen,1
+2023-10-12,1,Fiesta Nacional de España,1
+2023-11-01,1,Todos los Santos,1
+2023-12-06,1,Día de la Constitución Española,1
+2023-12-08,1,Inmaculada Concepción,1
+2023-12-25,1,Natividad del Señor,1
+2024-01-01,1,Año Nuevo,1
+2024-01-06,1,Epifanía del Señor,1
+2024-03-29,1,Viernes Santo,1
+2024-05-01,1,Fiesta del Trabajo,1
+2024-08-15,1,Asunción de la Virgen,1
+2024-10-12,1,Fiesta Nacional de España,1
+2024-11-01,1,Todos los Santos,1
+2024-12-06,1,Día de la Constitución Española,1
+2024-12-25,1,Natividad del Señor,1
+2025-01-01,1,Año Nuevo,1
+2025-01-06,1,Epifanía del Señor,1
+2025-04-18,1,Viernes Santo,1
+2025-05-01,1,Fiesta del Trabajo,1
+2025-08-15,1,Asunción de la Virgen,1
+2025-11-01,1,Todos los Santos,1
+2025-12-06,1,Día de la Constitución Española,1
+2025-12-08,1,Inmaculada Concepción,1
+2025-12-25,1,Natividad del Señor,1

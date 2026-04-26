@@ -24,6 +24,14 @@ from src.config.constants import (
     ACTION_SHIFT_PRODUCTION,
     DEFAULT_PRODUCTION_LEVEL,
     FACTORY_BASE_LOAD,
+    FACTORY_INITIAL_INVENTORY,
+    FACTORY_INVENTORY_CAPACITY,
+    FACTORY_INVENTORY_MIN,
+    FACTORY_DEMAND_PER_STEP,
+    FACTORY_STORAGE_COST_PER_UNIT,
+    FACTORY_STARTUP_ENERGY_COST,
+    FACTORY_PRODUCT_PRICE,
+    FACTORY_TAKEORPAY_FRACTION,
     FACTORY_VARIABLE_LOAD,
     PRIMARY_FUTURE_COLUMN,
     PRODUCTION_LEVELS,
@@ -67,6 +75,18 @@ class RLEnvironmentConfig:
     # When True the agent may use the 7-action extended catalog;
     # when False only the original 3 actions (0-2) are valid (backward-compat).
     use_extended_actions: bool = False
+
+    # Factory MDP: inventory dynamics, take-or-pay, startup cost, product revenue.
+    # All factory MDP logic is gated by use_factory_mdp=True so existing code is unaffected.
+    use_factory_mdp: bool = False
+    inventory_capacity: float = FACTORY_INVENTORY_CAPACITY
+    inventory_min: float = FACTORY_INVENTORY_MIN
+    initial_inventory: float = FACTORY_INITIAL_INVENTORY
+    demand_per_step: float = FACTORY_DEMAND_PER_STEP
+    storage_cost_per_unit: float = FACTORY_STORAGE_COST_PER_UNIT
+    startup_energy_cost: float = FACTORY_STARTUP_ENERGY_COST
+    product_price: float = FACTORY_PRODUCT_PRICE
+    takeorpay_fraction: float = FACTORY_TAKEORPAY_FRACTION
 
     @classmethod
     def from_settings(cls, settings: RLSettings) -> "RLEnvironmentConfig":
@@ -124,6 +144,8 @@ class EnergyRLEnvironment:
         self.done = False
         # Factory state: production level (fraction of nominal capacity)
         self.production_level: float = self.config.initial_production_level
+        # Factory MDP: goods inventory (physical units)
+        self.inventory: float = self.config.initial_inventory
 
     # =========================
     # Validation
@@ -182,10 +204,11 @@ class EnergyRLEnvironment:
     # =========================
 
     def reset(self) -> dict[str, Any]:
-        """Reset environment to initial state, including factory production level."""
+        """Reset environment to initial state, including factory production level and inventory."""
         self.current_step = 0
         self.done = False
         self.production_level = self.config.initial_production_level
+        self.inventory = self.config.initial_inventory
         return self._get_state()
 
     def step(self, action: int) -> tuple[dict[str, float], float, bool, dict[str, Any]]:
@@ -267,7 +290,22 @@ class EnergyRLEnvironment:
             + self.config.factory_variable_load * self.production_level
         )
 
+        # Factory MDP: inventory state (only exposed when factory MDP is active)
+        if self.config.use_factory_mdp:
+            state["inventory"] = float(self.inventory)
+            state["inventory_bin"] = float(self._inventory_bin())
+
         return state
+
+    def _inventory_bin(self) -> int:
+        """Discretize current inventory into 3 tabular-RL bins: 0=low, 1=medium, 2=high."""
+        span = max(self.config.inventory_capacity - self.config.inventory_min, 1.0)
+        ratio = (self.inventory - self.config.inventory_min) / span
+        if ratio < 0.33:
+            return 0
+        if ratio < 0.67:
+            return 1
+        return 2
 
     # =========================
     # Reward function
@@ -275,25 +313,26 @@ class EnergyRLEnvironment:
 
     def _compute_reward(self, action: int) -> float:
         """
-        Compute a daily procurement-cost-based reward for RL training.
+        Compute daily reward for RL training.
 
-        Cost model
-        ----------
-        Energy consumed = base_load + variable_load * production_level
-        The action determines the unit price paid for that energy:
+        When use_factory_mdp=False (default, backward-compatible):
+            Reward = –total_energy_cost.
+            Action selects the price at which energy is purchased.
 
-        Original actions (0–2):
-            0 do_nothing      → pay spot price
-            1 buy_m1_future   → pay M+1 futures price (+ optional hedge premium)
-            2 shift_production → legacy shift penalty model
+        When use_factory_mdp=True (realistic factory + hedging MDP):
+            Reward = Revenue − StorageCost − TakeOrPayCost − VariableEnergyCost
+            Implements: inventory dynamics, take-or-pay baseload, startup energy cost.
+        """
+        if self.config.use_factory_mdp:
+            return self._compute_factory_mdp_reward(action)
+        return self._compute_cost_only_reward(action)
 
-        Extended actions (3–6, only when use_extended_actions=True):
-            3 increase_production → raise output, pay spot for extra energy
-            4 decrease_production → cut output, save energy cost
-            5 buy_m2_future       → pay M+2 futures price
-            6 buy_m3_future       → pay M+3 futures price (slightly higher risk premium)
+    def _compute_cost_only_reward(self, action: int) -> float:
+        """
+        Original cost-minimisation reward (backward-compatible).
 
-        Reward = –total_cost  (agent maximises by minimising cost)
+        Action selects the unit price for total energy consumed this step.
+        Extended actions 3/4 also mutate production_level immediately.
         """
         row = self.df.iloc[self.current_step]
 
@@ -305,13 +344,11 @@ class EnergyRLEnvironment:
             else central_forecast
         )
 
-        # Energy consumption scaled by current production level
         energy = (
             self.config.factory_base_load
             + self.config.factory_variable_load * self.production_level
         )
 
-        # --- Original actions ---
         if action == 0:  # do_nothing
             realized_cost = energy * spot_price
         elif action == 1:  # buy_m1_future
@@ -322,13 +359,12 @@ class EnergyRLEnvironment:
                 (1.0 - shifted_fraction) * spot_price
                 + shifted_fraction * self.config.shift_penalty
             )
-        # --- Extended actions ---
-        elif action == 3:  # increase_production
+        elif action == 3:  # increase_production — immediate effect, same step
             new_level = min(self.production_level + PRODUCTION_STEP, PRODUCTION_LEVELS[-1])
             self.production_level = new_level
             new_energy = self.config.factory_base_load + self.config.factory_variable_load * new_level
             realized_cost = new_energy * spot_price
-        elif action == 4:  # decrease_production
+        elif action == 4:  # decrease_production — immediate effect, same step
             new_level = max(self.production_level - PRODUCTION_STEP, PRODUCTION_LEVELS[0])
             self.production_level = new_level
             new_energy = self.config.factory_base_load + self.config.factory_variable_load * new_level
@@ -337,7 +373,7 @@ class EnergyRLEnvironment:
             m2_price = (
                 float(row[self.config.future_m2_column])
                 if self.config.future_m2_column in row.index and pd.notna(row[self.config.future_m2_column])
-                else future_price * 1.01  # small liquidity premium if M+2 not available
+                else future_price * 1.01
             )
             realized_cost = energy * (m2_price + self.config.hedge_cost_penalty)
         elif action == 6:  # buy_m3_future
@@ -346,7 +382,7 @@ class EnergyRLEnvironment:
                 if self.config.future_m2_column in row.index and pd.notna(row[self.config.future_m2_column])
                 else future_price * 1.01
             )
-            m3_price = m2_price * 1.01  # M+3 has slightly wider bid-ask
+            m3_price = m2_price * 1.01
             realized_cost = energy * (m3_price + self.config.hedge_cost_penalty)
         else:
             realized_cost = energy * spot_price
@@ -354,7 +390,116 @@ class EnergyRLEnvironment:
         if action != 0:
             realized_cost += self.config.action_penalty
 
-        reward = -realized_cost
+        return float(-realized_cost)
+
+    def _compute_factory_mdp_reward(self, action: int) -> float:
+        """
+        Realistic factory + hedging MDP reward.
+
+        Formulation
+        -----------
+        E_startup  = startup_energy_cost  if production_level > 0  else 0
+        E_req      = E_startup + base_load + variable_load × production_level
+        committed  = base_load × takeorpay_fraction          (always paid at futures price)
+        remaining  = E_req − committed                       (priced via action)
+
+        Reward = Revenue − StorageCost − TakeOrPayCost − VariableEnergyCost
+
+        Inventory dynamics (applied after reward):
+            production_units = production_level × demand_per_step
+            I_{t+1} = clip(I_t + production_units − demand_per_step, I_min, I_max)
+
+        Temporal consistency
+        --------------------
+        At step t the agent observes state_t (prices, inventory_t) and chooses action_t.
+        Production adjustments (actions 3/4) take effect immediately at t so revenue
+        and energy cost reflect the chosen output level.  Inventory is updated after
+        reward so I_{t+1} is the state available at the next observation.
+        """
+        row = self.df.iloc[self.current_step]
+
+        future_price = float(row[self.config.future_column])
+        spot_price = (
+            float(row[self.config.spot_column])
+            if self.config.spot_column in row.index and pd.notna(row[self.config.spot_column])
+            else float(row[self.config.q50_column])
+        )
+        m2_price = (
+            float(row[self.config.future_m2_column])
+            if self.config.future_m2_column in row.index
+            and pd.notna(row[self.config.future_m2_column])
+            else future_price * 1.01
+        )
+        m3_price = m2_price * 1.01
+
+        # 1. Apply production decision immediately so all quantities use the new level
+        if action == ACTION_INCREASE_PRODUCTION:
+            self.production_level = min(
+                self.production_level + PRODUCTION_STEP, PRODUCTION_LEVELS[-1]
+            )
+        elif action == ACTION_DECREASE_PRODUCTION:
+            self.production_level = max(
+                self.production_level - PRODUCTION_STEP, PRODUCTION_LEVELS[0]
+            )
+
+        # 2. Energy requirement: startup (fixed cost when on) + process energy
+        startup_energy = (
+            self.config.startup_energy_cost if self.production_level > 0 else 0.0
+        )
+        process_energy = (
+            self.config.factory_base_load
+            + self.config.factory_variable_load * self.production_level
+        )
+        total_energy_req = startup_energy + process_energy
+
+        # 3. Take-or-pay: committed baseload fraction always paid at futures price
+        committed_energy = self.config.factory_base_load * self.config.takeorpay_fraction
+        takeorpay_cost = committed_energy * future_price
+
+        # 4. Remaining energy: priced according to action
+        remaining_energy = max(0.0, total_energy_req - committed_energy)
+
+        if action in {ACTION_DO_NOTHING, ACTION_INCREASE_PRODUCTION, ACTION_DECREASE_PRODUCTION}:
+            variable_cost = remaining_energy * spot_price
+        elif action == ACTION_BUY_M1_FUTURE:
+            variable_cost = remaining_energy * (future_price + self.config.hedge_cost_penalty)
+        elif action == ACTION_SHIFT_PRODUCTION:  # legacy action — keep functioning
+            variable_cost = remaining_energy * (
+                0.5 * spot_price + 0.5 * self.config.shift_penalty
+            )
+        elif action == ACTION_BUY_M2_FUTURE:
+            variable_cost = remaining_energy * (m2_price + self.config.hedge_cost_penalty)
+        elif action == ACTION_BUY_M3_FUTURE:
+            variable_cost = remaining_energy * (m3_price + self.config.hedge_cost_penalty)
+        else:
+            variable_cost = remaining_energy * spot_price
+
+        if action not in {
+            ACTION_DO_NOTHING,
+            ACTION_INCREASE_PRODUCTION,
+            ACTION_DECREASE_PRODUCTION,
+        }:
+            variable_cost += self.config.action_penalty
+
+        # 5. Revenue from goods produced this step
+        production_units = self.production_level * self.config.demand_per_step
+        revenue = production_units * self.config.product_price
+
+        # 6. Storage cost on inventory held at the start of this step
+        storage_cost = self.inventory * self.config.storage_cost_per_unit
+
+        # 7. Update inventory for next step: I_{t+1} = clip(I_t + P_t − D_t, min, max)
+        self.inventory = float(
+            max(
+                self.config.inventory_min,
+                min(
+                    self.config.inventory_capacity,
+                    self.inventory + production_units - self.config.demand_per_step,
+                ),
+            )
+        )
+
+        reward = revenue - storage_cost - takeorpay_cost - variable_cost
         return float(reward)
 
 

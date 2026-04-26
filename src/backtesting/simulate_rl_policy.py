@@ -17,14 +17,21 @@ import pandas as pd
 
 from src.config.constants import (
     ACTION_BUY_M1_FUTURE,
+    ACTION_BUY_M2_FUTURE,
+    ACTION_BUY_M3_FUTURE,
+    ACTION_DECREASE_PRODUCTION,
     ACTION_DO_NOTHING,
+    ACTION_INCREASE_PRODUCTION,
     ACTION_SHIFT_PRODUCTION,
+    ACTIONS,
     DATE_COLUMN,
     DEFAULT_DAILY_VOLUME,
     DEFAULT_HEDGE_RATIO_ON_BUY_FUTURE,
     DEFAULT_SHIFT_FRACTION,
     DEFAULT_SHIFT_PENALTY_PER_MWH,
     PRIMARY_FUTURE_COLUMN,
+    PRODUCTION_STEP,
+    SECONDARY_FUTURE_COLUMN,
     SPOT_PRICE_COLUMN,
     STRATEGY_RL_POLICY,
 )
@@ -40,11 +47,12 @@ class RLPolicySimulationError(Exception):
 
 DEFAULT_ACTION_COLUMN = "recommended_action"
 DEFAULT_VOLUME_COLUMN = "daily_energy_mwh"
-SUPPORTED_RL_ACTIONS = {
-    ACTION_DO_NOTHING,
-    ACTION_BUY_M1_FUTURE,
-    ACTION_SHIFT_PRODUCTION,
-}
+
+# All 7 actions are supported; original 3 are the backward-compatible core.
+SUPPORTED_RL_ACTIONS = set(ACTIONS)
+
+_M2_FUTURE_COLUMN = SECONDARY_FUTURE_COLUMN   # Future_M2_Price
+_M3_FUTURE_COLUMN = "Future_M3_Price"
 
 
 @dataclass
@@ -155,20 +163,48 @@ def _get_energy_volume(row: pd.Series, config: RLPolicySimulationConfig) -> floa
 
 
 
+def _resolve_futures_price(
+    row: pd.Series,
+    m1_column: str,
+    m2_column: str,
+    m3_column: str,
+    action: str,
+) -> float:
+    """Return the appropriate futures price for a hedge action, with graceful fallback."""
+    m1_raw = row[m1_column] if m1_column in row.index else float("nan")
+    m1_price = float(m1_raw) if pd.notna(m1_raw) else float("nan")
+
+    if action == ACTION_BUY_M1_FUTURE:
+        return m1_price
+    if action == ACTION_BUY_M2_FUTURE:
+        raw = row[m2_column] if m2_column in row.index else float("nan")
+        return float(raw) if pd.notna(raw) else (m1_price * 1.01 if not pd.isna(m1_price) else float("nan"))
+    if action == ACTION_BUY_M3_FUTURE:
+        raw_m2 = row[m2_column] if m2_column in row.index else float("nan")
+        m2_price = float(raw_m2) if pd.notna(raw_m2) else (m1_price * 1.01 if not pd.isna(m1_price) else float("nan"))
+        raw_m3 = row[m3_column] if m3_column in row.index else float("nan")
+        return float(raw_m3) if pd.notna(raw_m3) else (m2_price * 1.01 if not pd.isna(m2_price) else float("nan"))
+    return m1_price
+
+
 def _simulate_rl_policy_row(
     row: pd.Series,
     config: RLPolicySimulationConfig,
 ) -> dict[str, float | str]:
-    """Simulate one day of procurement cost under an RL-recommended action."""
+    """Simulate one day of procurement cost under an RL-recommended action.
+
+    Supports all 7 actions:
+    - do_nothing             → all energy at spot
+    - buy_m1_future          → hedged fraction at M1 price, remainder at spot
+    - shift_production       → legacy shift-penalty model
+    - increase_production    → volume scaled up by PRODUCTION_STEP, pay spot
+    - decrease_production    → volume scaled down by PRODUCTION_STEP, pay spot
+    - buy_m2_future          → hedged fraction at M2 price, remainder at spot
+    - buy_m3_future          → hedged fraction at M3 price, remainder at spot
+    """
     action = row[config.action_column]
     spot_price = float(row[config.spot_column])
     energy_volume_mwh = _get_energy_volume(row, config)
-
-    future_price = (
-        float(row[config.future_column])
-        if config.future_column in row.index and pd.notna(row[config.future_column])
-        else float("nan")
-    )
 
     future_volume_mwh = 0.0
     spot_volume_mwh = energy_volume_mwh
@@ -180,7 +216,10 @@ def _simulate_rl_policy_row(
     if action == ACTION_DO_NOTHING:
         total_cost = spot_cost
 
-    elif action == ACTION_BUY_M1_FUTURE:
+    elif action in {ACTION_BUY_M1_FUTURE, ACTION_BUY_M2_FUTURE, ACTION_BUY_M3_FUTURE}:
+        future_price = _resolve_futures_price(
+            row, config.future_column, _M2_FUTURE_COLUMN, _M3_FUTURE_COLUMN, action
+        )
         future_volume_mwh = energy_volume_mwh * config.hedge_ratio_on_buy_future
         spot_volume_mwh = energy_volume_mwh - future_volume_mwh
         future_cost = future_volume_mwh * future_price
@@ -193,6 +232,20 @@ def _simulate_rl_policy_row(
         spot_cost = spot_volume_mwh * spot_price
         shift_cost = shifted_volume_mwh * config.shift_penalty_per_mwh
         total_cost = spot_cost + shift_cost
+
+    elif action == ACTION_INCREASE_PRODUCTION:
+        adjusted_volume = energy_volume_mwh * (1.0 + PRODUCTION_STEP)
+        spot_volume_mwh = adjusted_volume
+        spot_cost = adjusted_volume * spot_price
+        total_cost = spot_cost
+        energy_volume_mwh = adjusted_volume
+
+    elif action == ACTION_DECREASE_PRODUCTION:
+        adjusted_volume = energy_volume_mwh * (1.0 - PRODUCTION_STEP)
+        spot_volume_mwh = adjusted_volume
+        spot_cost = adjusted_volume * spot_price
+        total_cost = spot_cost
+        energy_volume_mwh = adjusted_volume
 
     else:
         raise RLPolicySimulationError(f"Unsupported RL action encountered: {action}")

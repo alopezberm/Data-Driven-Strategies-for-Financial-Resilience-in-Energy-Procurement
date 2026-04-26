@@ -128,34 +128,34 @@ def rule_shift_production(row: pd.Series, config: ActionRuleConfig) -> bool:
 
 def rule_decrease_production(row: pd.Series, config: ActionRuleConfig) -> bool:
     """
-    Cut production by one step when the tail-risk premium over the futures price
-    is large enough to justify the output sacrifice.
+    Cut production by one step when tail-risk is high OR inventory is dangerously full.
 
-    Physical rationale: when extreme prices are expected the cost of running at
-    full capacity outweighs the lost revenue.  Production can safely fall to the
-    minimum level (PRODUCTION_LEVELS[0]).
+    Two triggers:
+    1. Tail-risk premium over futures exceeds threshold → energy too expensive to run flat out.
+    2. Inventory near capacity (bin=2) → risk of overflow; no point producing more.
+    inventory_bin is optional (defaults to 1 = medium) so rules work without factory MDP.
     """
     current_level = float(row.get("production_level", DEFAULT_PRODUCTION_LEVEL))
     at_minimum = current_level <= PRODUCTION_LEVELS[0]
-    return (
-        not at_minimum
-        and row["tail_vs_future_abs"] >= config.decrease_production_threshold
-    )
+    high_tail_risk = row["tail_vs_future_abs"] >= config.decrease_production_threshold
+    high_inventory = float(row.get("inventory_bin", 1)) >= 2
+    return not at_minimum and (high_tail_risk or high_inventory)
 
 
 def rule_increase_production(row: pd.Series, config: ActionRuleConfig) -> bool:
     """
-    Raise production by one step when spot prices are low relative to the
-    central forecast — capturing cheap energy to build finished-goods stock.
+    Raise production by one step when energy is cheap OR inventory is dangerously low.
 
-    Physical rationale: low prices mean cheap input energy; increasing output
-    now shifts consumption away from future expensive periods.
+    Two triggers:
+    1. Tail risk below futures (prices are favourable) → produce more now at low cost.
+    2. Inventory in low bin (bin=0) → risk of stockout; must build safety stock.
+    inventory_bin is optional (defaults to 1 = medium) so rules work without factory MDP.
     """
     current_level = float(row.get("production_level", DEFAULT_PRODUCTION_LEVEL))
     at_maximum = current_level >= PRODUCTION_LEVELS[-1]
-    # Increase when expected price is below the current futures price
-    tail_below_futures = row.get("tail_vs_future_abs", 0.0) < 0
-    return not at_maximum and tail_below_futures
+    cheap_energy = row.get("tail_vs_future_abs", 0.0) < 0
+    low_inventory = float(row.get("inventory_bin", 1)) <= 0
+    return not at_maximum and (cheap_energy or low_inventory)
 
 
 # =========================
@@ -260,9 +260,21 @@ def evaluate_action_with_reason(
         if rule_buy_m1_future(row, config):
             return ACTION_BUY_M1_FUTURE, "Tail risk exceeds futures price threshold"
         if rule_decrease_production(row, config):
-            return ACTION_DECREASE_PRODUCTION, "High expected cost — reduce production by 10%"
+            inv_bin = float(row.get("inventory_bin", 1))
+            reason = (
+                "Inventory near capacity — reduce production by 10%"
+                if inv_bin >= 2
+                else "High expected cost — reduce production by 10%"
+            )
+            return ACTION_DECREASE_PRODUCTION, reason
         if rule_increase_production(row, config):
-            return ACTION_INCREASE_PRODUCTION, "Low expected cost — increase production by 10%"
+            inv_bin = float(row.get("inventory_bin", 1))
+            reason = (
+                "Inventory low — increase production by 10% to rebuild safety stock"
+                if inv_bin <= 0
+                else "Low expected cost — increase production by 10%"
+            )
+            return ACTION_INCREASE_PRODUCTION, reason
         if rule_shift_production(row, config):
             return ACTION_SHIFT_PRODUCTION, "Weekend + high tail risk vs central forecast"
         return ACTION_DO_NOTHING, "No rule triggered"
