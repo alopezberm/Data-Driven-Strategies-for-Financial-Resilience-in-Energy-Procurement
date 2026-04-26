@@ -16,11 +16,21 @@ import pandas as pd
 from src.config.constants import (
     ACTIONS,
     ACTION_BUY_M1_FUTURE,
+    ACTION_BUY_M2_FUTURE,
+    ACTION_BUY_M3_FUTURE,
+    ACTION_DECREASE_PRODUCTION,
     ACTION_DO_NOTHING,
+    ACTION_INCREASE_PRODUCTION,
     ACTION_SHIFT_PRODUCTION,
+    DEFAULT_PRODUCTION_LEVEL,
+    FACTORY_BASE_LOAD,
+    FACTORY_VARIABLE_LOAD,
     PRIMARY_FUTURE_COLUMN,
+    PRODUCTION_LEVELS,
+    PRODUCTION_STEP,
     Q50_COLUMN,
     Q90_COLUMN,
+    SECONDARY_FUTURE_COLUMN,
     validate_action_catalog,
 )
 from src.config.settings import RLSettings, get_default_settings
@@ -35,6 +45,7 @@ class RLEnvironmentConfig:
     q50_column: str = Q50_COLUMN
     q90_column: str = Q90_COLUMN
     future_column: str = PRIMARY_FUTURE_COLUMN
+    future_m2_column: str = SECONDARY_FUTURE_COLUMN
     spot_column: str = "Spot_Price_SPEL"
     tail_vs_future_abs_column: str = "tail_vs_future_abs"
     tail_vs_central_abs_column: str = "tail_vs_central_abs"
@@ -47,6 +58,15 @@ class RLEnvironmentConfig:
     hedge_cost_penalty: float = 0.0
     shift_penalty: float = 2.0
     action_penalty: float = 0.0
+
+    # Factory model — energy consumption = base_load + variable_load * production_level
+    factory_base_load: float = FACTORY_BASE_LOAD
+    factory_variable_load: float = FACTORY_VARIABLE_LOAD
+    initial_production_level: float = DEFAULT_PRODUCTION_LEVEL
+
+    # When True the agent may use the 7-action extended catalog;
+    # when False only the original 3 actions (0-2) are valid (backward-compat).
+    use_extended_actions: bool = False
 
     @classmethod
     def from_settings(cls, settings: RLSettings) -> "RLEnvironmentConfig":
@@ -102,6 +122,8 @@ class EnergyRLEnvironment:
 
         self.current_step = 0
         self.done = False
+        # Factory state: production level (fraction of nominal capacity)
+        self.production_level: float = self.config.initial_production_level
 
     # =========================
     # Validation
@@ -143,19 +165,27 @@ class EnergyRLEnvironment:
 
     def _validate_action(self, action: int) -> None:
         """Validate that the provided encoded action belongs to the supported discrete action space."""
-        if action not in {0, 1, 2}:
-            raise RLEnvironmentError(
-                f"Unsupported action '{action}'. Expected one of: 0, 1, 2."
-            )
+        if self.config.use_extended_actions:
+            valid = set(range(len(ACTIONS)))
+            if action not in valid:
+                raise RLEnvironmentError(
+                    f"Unsupported action '{action}'. Extended mode supports 0–{len(ACTIONS)-1}."
+                )
+        else:
+            if action not in {0, 1, 2}:
+                raise RLEnvironmentError(
+                    f"Unsupported action '{action}'. Expected one of: 0, 1, 2."
+                )
 
     # =========================
     # Core RL API
     # =========================
 
     def reset(self) -> dict[str, Any]:
-        """Reset environment to initial state."""
+        """Reset environment to initial state, including factory production level."""
         self.current_step = 0
         self.done = False
+        self.production_level = self.config.initial_production_level
         return self._get_state()
 
     def step(self, action: int) -> tuple[dict[str, float], float, bool, dict[str, Any]]:
@@ -230,6 +260,13 @@ class EnergyRLEnvironment:
         else:
             state["is_holiday"] = 0.0
 
+        # Factory model state components
+        state["production_level"] = float(self.production_level)
+        state["energy_consumption"] = float(
+            self.config.factory_base_load
+            + self.config.factory_variable_load * self.production_level
+        )
+
         return state
 
     # =========================
@@ -237,7 +274,27 @@ class EnergyRLEnvironment:
     # =========================
 
     def _compute_reward(self, action: int) -> float:
-        """Compute a simple daily cost-based reward for RL training."""
+        """
+        Compute a daily procurement-cost-based reward for RL training.
+
+        Cost model
+        ----------
+        Energy consumed = base_load + variable_load * production_level
+        The action determines the unit price paid for that energy:
+
+        Original actions (0–2):
+            0 do_nothing      → pay spot price
+            1 buy_m1_future   → pay M+1 futures price (+ optional hedge premium)
+            2 shift_production → legacy shift penalty model
+
+        Extended actions (3–6, only when use_extended_actions=True):
+            3 increase_production → raise output, pay spot for extra energy
+            4 decrease_production → cut output, save energy cost
+            5 buy_m2_future       → pay M+2 futures price
+            6 buy_m3_future       → pay M+3 futures price (slightly higher risk premium)
+
+        Reward = –total_cost  (agent maximises by minimising cost)
+        """
         row = self.df.iloc[self.current_step]
 
         central_forecast = float(row[self.config.q50_column])
@@ -248,13 +305,51 @@ class EnergyRLEnvironment:
             else central_forecast
         )
 
-        realized_cost = spot_price
+        # Energy consumption scaled by current production level
+        energy = (
+            self.config.factory_base_load
+            + self.config.factory_variable_load * self.production_level
+        )
 
-        if action == 1:
-            realized_cost = future_price + self.config.hedge_cost_penalty
-        elif action == 2:
+        # --- Original actions ---
+        if action == 0:  # do_nothing
+            realized_cost = energy * spot_price
+        elif action == 1:  # buy_m1_future
+            realized_cost = energy * (future_price + self.config.hedge_cost_penalty)
+        elif action == 2:  # shift_production (legacy)
             shifted_fraction = 0.5
-            realized_cost = (1.0 - shifted_fraction) * spot_price + shifted_fraction * self.config.shift_penalty
+            realized_cost = energy * (
+                (1.0 - shifted_fraction) * spot_price
+                + shifted_fraction * self.config.shift_penalty
+            )
+        # --- Extended actions ---
+        elif action == 3:  # increase_production
+            new_level = min(self.production_level + PRODUCTION_STEP, PRODUCTION_LEVELS[-1])
+            self.production_level = new_level
+            new_energy = self.config.factory_base_load + self.config.factory_variable_load * new_level
+            realized_cost = new_energy * spot_price
+        elif action == 4:  # decrease_production
+            new_level = max(self.production_level - PRODUCTION_STEP, PRODUCTION_LEVELS[0])
+            self.production_level = new_level
+            new_energy = self.config.factory_base_load + self.config.factory_variable_load * new_level
+            realized_cost = new_energy * spot_price
+        elif action == 5:  # buy_m2_future
+            m2_price = (
+                float(row[self.config.future_m2_column])
+                if self.config.future_m2_column in row.index and pd.notna(row[self.config.future_m2_column])
+                else future_price * 1.01  # small liquidity premium if M+2 not available
+            )
+            realized_cost = energy * (m2_price + self.config.hedge_cost_penalty)
+        elif action == 6:  # buy_m3_future
+            m2_price = (
+                float(row[self.config.future_m2_column])
+                if self.config.future_m2_column in row.index and pd.notna(row[self.config.future_m2_column])
+                else future_price * 1.01
+            )
+            m3_price = m2_price * 1.01  # M+3 has slightly wider bid-ask
+            realized_cost = energy * (m3_price + self.config.hedge_cost_penalty)
+        else:
+            realized_cost = energy * spot_price
 
         if action != 0:
             realized_cost += self.config.action_penalty

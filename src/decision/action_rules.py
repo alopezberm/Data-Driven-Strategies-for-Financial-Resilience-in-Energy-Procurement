@@ -16,6 +16,11 @@ import pandas as pd
 from src.config.constants import (
     ACTIONS,
     ALLOW_SHIFT_ON_WEEKENDS,
+    DEFAULT_PRODUCTION_LEVEL,
+    MIN_ABS_RISK_PREMIUM_TO_BUY_M2,
+    MIN_ABS_RISK_PREMIUM_TO_BUY_M3,
+    MIN_ABS_RISK_PREMIUM_TO_DECREASE,
+    PRODUCTION_LEVELS,
     TAIL_VS_CENTRAL_ABS_THRESHOLD,
     TAIL_VS_FUTURE_ABS_THRESHOLD,
     validate_action_catalog,
@@ -30,6 +35,10 @@ class ActionRuleError(Exception):
 ACTION_DO_NOTHING = ACTIONS[0]
 ACTION_BUY_M1_FUTURE = ACTIONS[1]
 ACTION_SHIFT_PRODUCTION = ACTIONS[2]
+ACTION_INCREASE_PRODUCTION = ACTIONS[3]
+ACTION_DECREASE_PRODUCTION = ACTIONS[4]
+ACTION_BUY_M2_FUTURE = ACTIONS[5]
+ACTION_BUY_M3_FUTURE = ACTIONS[6]
 
 
 # =========================
@@ -41,12 +50,21 @@ ACTION_SHIFT_PRODUCTION = ACTIONS[2]
 class ActionRuleConfig:
     """Configuration for heuristic action-rule evaluation."""
 
-    # Thresholds
+    # Thresholds — original actions
     tail_vs_future_abs_threshold: float = TAIL_VS_FUTURE_ABS_THRESHOLD
     tail_vs_central_abs_threshold: float = TAIL_VS_CENTRAL_ABS_THRESHOLD
 
+    # Thresholds — extended actions (production + M2/M3 futures)
+    decrease_production_threshold: float = MIN_ABS_RISK_PREMIUM_TO_DECREASE
+    buy_m2_future_threshold: float = MIN_ABS_RISK_PREMIUM_TO_BUY_M2
+    buy_m3_future_threshold: float = MIN_ABS_RISK_PREMIUM_TO_BUY_M3
+
     # Flags
     allow_shift_on_weekends: bool = ALLOW_SHIFT_ON_WEEKENDS
+
+    # Extended action set: when True the rule engine considers production
+    # adjustment and M+2/M+3 futures in addition to the original three actions.
+    use_extended_actions: bool = False
 
     @classmethod
     def from_policy_settings(cls, policy_settings: PolicySettings) -> "ActionRuleConfig":
@@ -104,6 +122,66 @@ def rule_shift_production(row: pd.Series, config: ActionRuleConfig) -> bool:
     )
 
 
+# =========================
+# Extended rules — production adjustment
+# =========================
+
+def rule_decrease_production(row: pd.Series, config: ActionRuleConfig) -> bool:
+    """
+    Cut production by one step when the tail-risk premium over the futures price
+    is large enough to justify the output sacrifice.
+
+    Physical rationale: when extreme prices are expected the cost of running at
+    full capacity outweighs the lost revenue.  Production can safely fall to the
+    minimum level (PRODUCTION_LEVELS[0]).
+    """
+    current_level = float(row.get("production_level", DEFAULT_PRODUCTION_LEVEL))
+    at_minimum = current_level <= PRODUCTION_LEVELS[0]
+    return (
+        not at_minimum
+        and row["tail_vs_future_abs"] >= config.decrease_production_threshold
+    )
+
+
+def rule_increase_production(row: pd.Series, config: ActionRuleConfig) -> bool:
+    """
+    Raise production by one step when spot prices are low relative to the
+    central forecast — capturing cheap energy to build finished-goods stock.
+
+    Physical rationale: low prices mean cheap input energy; increasing output
+    now shifts consumption away from future expensive periods.
+    """
+    current_level = float(row.get("production_level", DEFAULT_PRODUCTION_LEVEL))
+    at_maximum = current_level >= PRODUCTION_LEVELS[-1]
+    # Increase when expected price is below the current futures price
+    tail_below_futures = row.get("tail_vs_future_abs", 0.0) < 0
+    return not at_maximum and tail_below_futures
+
+
+# =========================
+# Extended rules — M+2 / M+3 futures
+# =========================
+
+def rule_buy_m2_future(row: pd.Series, config: ActionRuleConfig) -> bool:
+    """
+    Buy M+2 futures when mid-term tail risk exceeds the M+1 hedge and M+2
+    is not already fully committed.
+
+    This hedges beyond the front month when uncertainty is elevated over a
+    two-month horizon.
+    """
+    return row["tail_vs_future_abs"] >= config.buy_m2_future_threshold
+
+
+def rule_buy_m3_future(row: pd.Series, config: ActionRuleConfig) -> bool:
+    """
+    Buy M+3 futures only under severe long-horizon risk.
+
+    Reserved for cases where the tail-risk premium is so large that locking in
+    prices three months out is economically justified despite lower liquidity.
+    """
+    return row["tail_vs_future_abs"] >= config.buy_m3_future_threshold
+
 
 # =========================
 # Rule engine
@@ -125,19 +203,42 @@ def evaluate_action(row: pd.Series, config: Optional[ActionRuleConfig] = None) -
     """
     Evaluate all rules in priority order and return the chosen action.
 
-    Priority:
-    1. buy_m1_future
-    2. shift_production
+    Original priority (always active):
+    1. buy_m1_future   — hedge when tail risk exceeds futures price
+    2. shift_production — reduce load on flexible + high-risk days
     3. do_nothing
+
+    Extended priority (active when config.use_extended_actions is True):
+    1. buy_m3_future   — severe long-horizon risk
+    2. buy_m2_future   — elevated mid-horizon risk
+    3. buy_m1_future   — front-month tail risk
+    4. decrease_production — high spot/tail cost, output sacrifice
+    5. increase_production — cheap energy window, stock building
+    6. shift_production
+    7. do_nothing
     """
     config = _get_config(config)
 
+    if config.use_extended_actions:
+        if rule_buy_m3_future(row, config):
+            return ACTION_BUY_M3_FUTURE
+        if rule_buy_m2_future(row, config):
+            return ACTION_BUY_M2_FUTURE
+        if rule_buy_m1_future(row, config):
+            return ACTION_BUY_M1_FUTURE
+        if rule_decrease_production(row, config):
+            return ACTION_DECREASE_PRODUCTION
+        if rule_increase_production(row, config):
+            return ACTION_INCREASE_PRODUCTION
+        if rule_shift_production(row, config):
+            return ACTION_SHIFT_PRODUCTION
+        return ACTION_DO_NOTHING
+
+    # Original (backward-compatible) path
     if rule_buy_m1_future(row, config):
         return ACTION_BUY_M1_FUTURE
-
     if rule_shift_production(row, config):
         return ACTION_SHIFT_PRODUCTION
-
     return ACTION_DO_NOTHING
 
 
@@ -151,12 +252,26 @@ def evaluate_action_with_reason(
     """
     config = _get_config(config)
 
+    if config.use_extended_actions:
+        if rule_buy_m3_future(row, config):
+            return ACTION_BUY_M3_FUTURE, "Severe long-horizon tail risk — buy M+3 futures"
+        if rule_buy_m2_future(row, config):
+            return ACTION_BUY_M2_FUTURE, "Elevated mid-horizon tail risk — buy M+2 futures"
+        if rule_buy_m1_future(row, config):
+            return ACTION_BUY_M1_FUTURE, "Tail risk exceeds futures price threshold"
+        if rule_decrease_production(row, config):
+            return ACTION_DECREASE_PRODUCTION, "High expected cost — reduce production by 10%"
+        if rule_increase_production(row, config):
+            return ACTION_INCREASE_PRODUCTION, "Low expected cost — increase production by 10%"
+        if rule_shift_production(row, config):
+            return ACTION_SHIFT_PRODUCTION, "Weekend + high tail risk vs central forecast"
+        return ACTION_DO_NOTHING, "No rule triggered"
+
+    # Original (backward-compatible) path
     if rule_buy_m1_future(row, config):
         return ACTION_BUY_M1_FUTURE, "Tail risk exceeds futures price threshold"
-
     if rule_shift_production(row, config):
         return ACTION_SHIFT_PRODUCTION, "Weekend + high tail risk vs central forecast"
-
     return ACTION_DO_NOTHING, "No rule triggered"
 
 
