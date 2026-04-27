@@ -13,6 +13,9 @@ from src.config.constants import DATE_COLUMN
 from src.config.paths import MERGED_INTERIM_FILE, TRAIN_FILE, VALIDATION_FILE, TEST_FILE
 
 
+# train = 2020–2023, validation = 2024 (within-window), test = 2025 (holdout).
+# run_backtest combines train+validation for model fitting so the quantile
+# models see all pre-2025 data; 2025 (test) is the true out-of-sample period.
 DEFAULT_TRAIN_END = "2023-12-31"
 DEFAULT_VALIDATION_END = "2024-12-31"
 
