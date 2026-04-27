@@ -301,6 +301,15 @@ class QLearningAgent(BaseRLAgent):
             "is_holiday": is_holiday,
         }
 
+        # Horizon t+3 tail signal: how elevated is the t+3 tail forecast relative
+        # to the current futures price?  Only added when the environment exposes it,
+        # so the state key is backward-compatible when h3 data is absent.
+        if "forecast_tail_h3" in state and "current_m1_future" in state:
+            tail_h3_vs_future = _to_float(
+                "forecast_tail_h3", state["forecast_tail_h3"]
+            ) - current_m1_future
+            compact_state["tail_h3_vs_future_abs"] = _bin_value(tail_h3_vs_future, 5.0)
+
         # Include inventory_bin when the factory MDP is active.
         # Binned to {0, 1, 2} so tabular state space stays manageable.
         if "inventory_bin" in state:

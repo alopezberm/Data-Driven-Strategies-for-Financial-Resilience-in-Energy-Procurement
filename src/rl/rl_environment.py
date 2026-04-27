@@ -37,7 +37,9 @@ from src.config.constants import (
     PRODUCTION_LEVELS,
     PRODUCTION_STEP,
     Q50_COLUMN,
+    Q50_H3_COLUMN,
     Q90_COLUMN,
+    Q90_H3_COLUMN,
     SECONDARY_FUTURE_COLUMN,
     validate_action_catalog,
 )
@@ -52,6 +54,9 @@ class RLEnvironmentError(Exception):
 class RLEnvironmentConfig:
     q50_column: str = Q50_COLUMN
     q90_column: str = Q90_COLUMN
+    # Horizon t+3 forecast columns (optional — absent columns are silently skipped)
+    q50_h3_column: str = Q50_H3_COLUMN
+    q90_h3_column: str = Q90_H3_COLUMN
     future_column: str = PRIMARY_FUTURE_COLUMN
     future_m2_column: str = SECONDARY_FUTURE_COLUMN
     spot_column: str = "Spot_Price_SPEL"
@@ -282,6 +287,19 @@ class EnergyRLEnvironment:
             state["is_holiday"] = float(row[self.config.holiday_column])
         else:
             state["is_holiday"] = 0.0
+
+        # Horizon t+3 forecasts (optional — included only when the columns exist and are non-NaN)
+        if (
+            self.config.q50_h3_column in row.index
+            and pd.notna(row[self.config.q50_h3_column])
+        ):
+            state["forecast_central_h3"] = float(row[self.config.q50_h3_column])
+
+        if (
+            self.config.q90_h3_column in row.index
+            and pd.notna(row[self.config.q90_h3_column])
+        ):
+            state["forecast_tail_h3"] = float(row[self.config.q90_h3_column])
 
         # Factory model state components
         state["production_level"] = float(self.production_level)

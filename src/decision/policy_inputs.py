@@ -87,21 +87,31 @@ def _validate_quantile_results(results: Sequence[QuantileModelResults]) -> None:
 # Quantile prediction formatting
 # =========================
 
-def quantile_results_to_frame(results: Sequence[QuantileModelResults]) -> pd.DataFrame:
+def quantile_results_to_frame(
+    results: Sequence[QuantileModelResults],
+    column_suffix: str = "",
+) -> pd.DataFrame:
     """
     Convert quantile model outputs into a single dataframe.
 
     Output columns:
-    - y_true
-    - q_<quantile>
+    - y_true  (only when column_suffix == "")
+    - q_<quantile>[column_suffix]
+
+    Parameters
+    ----------
+    column_suffix : str, optional
+        Appended to every quantile column name.  Use "_h3" for horizon-3 results
+        so they coexist with the default horizon-2 columns in the policy dataframe.
     """
     _validate_quantile_results(results)
 
     quantile_df = pd.DataFrame(index=results[0].y_true.index)
-    quantile_df["y_true"] = results[0].y_true
+    if not column_suffix:
+        quantile_df["y_true"] = results[0].y_true
 
     for result in sorted(results, key=lambda x: x.quantile):
-        quantile_df[_format_quantile_column(result.quantile)] = result.y_pred
+        quantile_df[_format_quantile_column(result.quantile) + column_suffix] = result.y_pred
 
     return quantile_df
 
@@ -113,6 +123,7 @@ def quantile_results_to_frame(results: Sequence[QuantileModelResults]) -> pd.Dat
 def prepare_policy_inputs(
     base_df: pd.DataFrame,
     quantile_results: Sequence[QuantileModelResults],
+    quantile_results_h3: Sequence[QuantileModelResults] | None = None,
     include_optional_columns: bool = True,
 ) -> pd.DataFrame:
     """
@@ -123,7 +134,11 @@ def prepare_policy_inputs(
     base_df : pd.DataFrame
         Test/evaluation dataframe containing actual market inputs.
     quantile_results : Sequence[QuantileModelResults]
-        Quantile model outputs generated on the same evaluation rows.
+        Quantile model outputs for horizon t+2 (default horizon).
+    quantile_results_h3 : Sequence[QuantileModelResults] | None, optional
+        Quantile model outputs for horizon t+3.  When provided, predictions are
+        joined as ``q_<quantile>_h3`` columns.  Rows without a valid t+3 prediction
+        (i.e. the last 1 row relative to h2) are left as NaN.
     include_optional_columns : bool, optional
         Whether to preserve a set of optional but useful business/context columns.
 
@@ -156,18 +171,41 @@ def prepare_policy_inputs(
         validate="one_to_one",
     )
 
+    # Optionally join horizon t+3 quantile predictions as _h3-suffixed columns.
+    # The h3 frame covers one fewer row (last row has no valid t+3 target); those
+    # rows receive NaN — handled gracefully downstream.
+    if quantile_results_h3 is not None:
+        _validate_quantile_results(quantile_results_h3)
+        quantile_df_h3 = quantile_results_to_frame(quantile_results_h3, column_suffix="_h3")
+        quantile_df_h3 = (
+            quantile_df_h3
+            .reset_index(drop=False)
+            .rename(columns={"index": "source_index"})
+        )
+        h3_cols = [col for col in quantile_df_h3.columns if col.endswith("_h3")]
+        policy_df = policy_df.merge(
+            quantile_df_h3[["source_index"] + h3_cols],
+            on="source_index",
+            how="left",
+        )
+
     # Keep a clean and predictable column order.
     core_columns = [
         DATE_COLUMN,
         SPOT_PRICE_COLUMN,
         PRIMARY_FUTURE_COLUMN,
     ]
+    # h2 quantile columns first, then h3 columns
     quantile_columns = sorted(
-        [column for column in policy_df.columns if column.startswith("q_")],
+        [col for col in policy_df.columns if col.startswith("q_") and not col.endswith("_h3")],
         key=lambda x: float(x.replace("q_", "")),
     )
+    quantile_h3_columns = sorted(
+        [col for col in policy_df.columns if col.startswith("q_") and col.endswith("_h3")],
+        key=lambda x: float(x.replace("q_", "").replace("_h3", "")),
+    )
 
-    selected_columns = core_columns + quantile_columns
+    selected_columns = core_columns + quantile_columns + quantile_h3_columns
 
     if include_optional_columns:
         selected_columns.extend(
