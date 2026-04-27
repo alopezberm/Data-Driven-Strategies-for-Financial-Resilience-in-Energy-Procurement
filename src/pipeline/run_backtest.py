@@ -5,10 +5,14 @@ run_backtest.py
 
 End-to-end backtesting pipeline for the energy procurement DSS.
 
+Temporal split enforced:
+- Model training  : 2020–2024  (train_features + validation_features combined)
+- Backtest period : 2025       (test_features — true out-of-sample holdout)
+
 This script:
-1. Loads engineered train/validation datasets
-2. Trains quantile models
-3. Prepares policy inputs
+1. Loads engineered train/validation/test datasets
+2. Trains quantile models on 2020–2024
+3. Prepares policy inputs on 2025
 4. Applies the heuristic policy
 5. Simulates baseline and policy strategies
 6. Compares strategies and resilience metrics
@@ -32,6 +36,7 @@ from src.config.paths import (
     BACKTESTS_DIR,
     FIGURES_DIR,
     POLICIES_DIR,
+    TEST_FEATURES_FILE,
     TRAIN_FEATURES_FILE,
     VALIDATION_FEATURES_FILE,
 )
@@ -67,13 +72,13 @@ from src.visualization.plot_backtest_results import (
 )
 
 
-POLICY_DECISIONS_OUTPUT_FILE = POLICIES_DIR / "validation_policy_decisions.csv"
-SPOT_ONLY_OUTPUT_FILE = BACKTESTS_DIR / "validation_spot_only.csv"
-STATIC_HEDGE_OUTPUT_FILE = BACKTESTS_DIR / "validation_static_hedge.csv"
+POLICY_DECISIONS_OUTPUT_FILE = POLICIES_DIR / "test_2025_policy_decisions.csv"
+SPOT_ONLY_OUTPUT_FILE = BACKTESTS_DIR / "test_2025_spot_only.csv"
+STATIC_HEDGE_OUTPUT_FILE = BACKTESTS_DIR / "test_2025_static_hedge.csv"
 
-HEURISTIC_POLICY_OUTPUT_FILE = BACKTESTS_DIR / "validation_heuristic_policy.csv"
-RL_POLICY_DECISIONS_OUTPUT_FILE = POLICIES_DIR / "validation_rl_policy_decisions.csv"
-RL_POLICY_OUTPUT_FILE = BACKTESTS_DIR / "validation_rl_policy.csv"
+HEURISTIC_POLICY_OUTPUT_FILE = BACKTESTS_DIR / "test_2025_heuristic_policy.csv"
+RL_POLICY_DECISIONS_OUTPUT_FILE = POLICIES_DIR / "test_2025_rl_policy_decisions.csv"
+RL_POLICY_OUTPUT_FILE = BACKTESTS_DIR / "test_2025_rl_policy.csv"
 
 QUANTILE_SUMMARY_OUTPUT_FILE = BACKTESTS_DIR / "quantile_model_summary.csv"
 QUANTILE_COVERAGE_OUTPUT_FILE = BACKTESTS_DIR / "quantile_coverage_summary.csv"
@@ -111,7 +116,7 @@ logger = get_logger(__name__)
 def _check_required_inputs() -> None:
     """Ensure required processed feature files exist before running."""
     logger.info("Checking required input files for backtest pipeline...")
-    required_files = [TRAIN_FEATURES_FILE, VALIDATION_FEATURES_FILE]
+    required_files = [TRAIN_FEATURES_FILE, VALIDATION_FEATURES_FILE, TEST_FEATURES_FILE]
     missing_files = [str(file_path) for file_path in required_files if not file_path.exists()]
     if missing_files:
         raise BacktestPipelineError(
@@ -149,29 +154,48 @@ def run_backtest_pipeline() -> dict[str, pd.DataFrame]:
     # =========================
     # 1. Load datasets
     # =========================
-    train = pd.read_csv(TRAIN_FEATURES_FILE)
-    val = pd.read_csv(VALIDATION_FEATURES_FILE)
-    logger.info(f"Loaded train features: {train.shape}")
-    logger.info(f"Loaded validation features: {val.shape}")
+    # train_raw (2020–2023) + val_internal (2024) are combined so the quantile
+    # models see all pre-2025 data.  test (2025) is the true out-of-sample
+    # holdout used exclusively for backtesting.
+    train_raw = pd.read_csv(TRAIN_FEATURES_FILE)
+    val_internal = pd.read_csv(VALIDATION_FEATURES_FILE)
+    test = pd.read_csv(TEST_FEATURES_FILE)
+
+    train = pd.concat([train_raw, val_internal], ignore_index=True)
+
+    logger.info(f"Loaded train features (2020–2023): {train_raw.shape}")
+    logger.info(f"Loaded validation features (2024): {val_internal.shape}")
+    logger.info(f"Combined training set (2020–2024): {train.shape}")
+    logger.info(f"Loaded test features (2025 holdout): {test.shape}")
 
     # =========================
     # 2. Train quantile models
     # =========================
+    # Horizon t+2: models trained on 2020–2024, evaluated on 2025.
     quantile_results, _, _ = train_quantile_models(
         train,
-        val,
+        test,
         quantiles=DEFAULT_QUANTILES,
+        horizon=2,
+    )
+
+    # Horizon t+3: same training data, one extra day ahead.
+    quantile_results_h3, _, _ = train_quantile_models(
+        train,
+        test,
+        quantiles=DEFAULT_QUANTILES,
+        horizon=3,
     )
 
     quantile_summary = summarize_quantile_results(quantile_results)
     quantile_diagnostics = build_quantile_diagnostics_report(quantile_results)
-    logger.info("Quantile models trained and diagnostics computed.")
+    logger.info("Quantile models (t+2 and t+3) trained and diagnostics computed.")
 
     # =========================
     # 3. Prepare policy inputs
     # =========================
-    policy_inputs_df = prepare_policy_inputs(val, quantile_results)
-    logger.info(f"Prepared policy inputs: {policy_inputs_df.shape}")
+    policy_inputs_df = prepare_policy_inputs(test, quantile_results, quantile_results_h3=quantile_results_h3)
+    logger.info(f"Prepared policy inputs (with h3 signals): {policy_inputs_df.shape}")
 
     # =========================
     # 4. Apply heuristic policy
@@ -193,26 +217,26 @@ def run_backtest_pipeline() -> dict[str, pd.DataFrame]:
     logger.info(f"Applied RL policy: {rl_decisions_df.shape}")
 
     # =========================
-    # 5. Align validation subset
+    # 5. Align test subset
     # =========================
     if "source_index" not in policy_inputs_df.columns:
         raise BacktestPipelineError(
             "Policy inputs dataframe must contain 'source_index' for alignment."
         )
 
-    val_aligned = val.loc[policy_inputs_df["source_index"]].copy()
-    val_aligned = val_aligned.sort_index().reset_index(drop=True)
+    test_aligned = test.loc[policy_inputs_df["source_index"]].copy()
+    test_aligned = test_aligned.sort_index().reset_index(drop=True)
     decisions_df = decisions_df.sort_values("source_index").reset_index(drop=True)
 
     rl_decisions_df = rl_decisions_df.sort_values("row_id").reset_index(drop=True)
 
     # =========================
-    # 6. Simulate strategies
+    # 6. Simulate strategies (on 2025 test period)
     # =========================
-    spot_only_df = simulate_spot_only_baseline(val_aligned)
+    spot_only_df = simulate_spot_only_baseline(test_aligned)
 
     static_hedge_df = simulate_static_hedge_baseline(
-        val_aligned,
+        test_aligned,
         config=BaselineSimulationConfig(
             hedge_ratio=0.7,
         ),
@@ -227,17 +251,17 @@ def run_backtest_pipeline() -> dict[str, pd.DataFrame]:
         ),
     )
 
-    rl_policy_input_df = val_aligned.copy().reset_index(drop=True)
+    rl_policy_input_df = test_aligned.copy().reset_index(drop=True)
     rl_policy_input_df["recommended_action"] = rl_decisions_df["recommended_action"].values
     rl_policy_input_df["action_source"] = STRATEGY_RL_POLICY
 
     rl_policy_sim_df = simulate_rl_policy_strategy(rl_policy_input_df)
 
     simulation_dfs = [spot_only_df, static_hedge_df, policy_sim_df, rl_policy_sim_df]
-    logger.info(f"Spot-only simulation shape: {spot_only_df.shape}")
-    logger.info(f"Static-hedge simulation shape: {static_hedge_df.shape}")
-    logger.info(f"Heuristic-policy simulation shape: {policy_sim_df.shape}")
-    logger.info(f"RL-policy simulation shape: {rl_policy_sim_df.shape}")
+    logger.info(f"Spot-only simulation shape (2025): {spot_only_df.shape}")
+    logger.info(f"Static-hedge simulation shape (2025): {static_hedge_df.shape}")
+    logger.info(f"Heuristic-policy simulation shape (2025): {policy_sim_df.shape}")
+    logger.info(f"RL-policy simulation shape (2025): {rl_policy_sim_df.shape}")
 
     # =========================
     # 7. Comparison + resilience
@@ -374,6 +398,7 @@ def run_backtest_pipeline() -> dict[str, pd.DataFrame]:
         "resilience_vs_reference": resilience_report["resilience_vs_reference"],
         "rl_policy_decisions": rl_decisions_df,
         "rl_rewards_summary": rl_training_artifacts.rewards_summary_df,
+        "quantile_results_h3": quantile_results_h3,
     }
 
 

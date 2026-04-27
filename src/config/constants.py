@@ -16,6 +16,7 @@ from __future__ import annotations
 DATE_COLUMN = "date"
 TARGET_COLUMN = "Spot_Price_SPEL"
 DEFAULT_FORECAST_HORIZON = 1
+DEFAULT_FORECAST_HORIZONS = [2, 3]
 
 DEFAULT_QUANTILES = [0.5, 0.9, 0.95]
 DEFAULT_ROLLING_WINDOWS = [7, 14, 28]
@@ -51,10 +52,15 @@ OPEN_INTEREST_COLUMNS = [
     "Future_M6_OpenInterest",
 ]
 
-# Quantile column helpers
+# Quantile column helpers — horizon t+2 (default)
 Q50_COLUMN = "q_0.5"
 Q90_COLUMN = "q_0.9"
 Q95_COLUMN = "q_0.95"
+
+# Quantile column helpers — horizon t+3
+Q50_H3_COLUMN = "q_0.5_h3"
+Q90_H3_COLUMN = "q_0.9_h3"
+Q95_H3_COLUMN = "q_0.95_h3"
 
 # Required columns for policy/backtesting inputs
 POLICY_REQUIRED_COLUMNS = [
