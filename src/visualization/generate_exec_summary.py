@@ -16,6 +16,7 @@ from pathlib import Path
 
 import pandas as pd
 
+from src.config.constants import MDP_D, STRATEGY_SPOT_ONLY, STRATEGY_HEURISTIC_POLICY
 from src.visualization.plots import (
     plot_exec_summary_business_case,
     plot_exec_summary_resilience_overlay,
@@ -24,9 +25,9 @@ from src.visualization.plots import (
 _PROJECT_ROOT = Path(__file__).resolve().parents[2]
 _FIGURES_DIR = _PROJECT_ROOT / "data" / "outputs" / "figures"
 
-_SUMMARY_CSV = _PROJECT_ROOT / "data" / "outputs" / "backtests" / "strategy_summary_vs_spot_only.csv"
-_DAILY_CSV   = _PROJECT_ROOT / "data" / "outputs" / "backtests" / "strategy_daily_comparison.csv"
-_TEST_CSV    = _PROJECT_ROOT / "data" / "processed" / "test.csv"
+_SUMMARY_CSV  = _PROJECT_ROOT / "data" / "outputs" / "backtests" / "strategy_summary_vs_spot_only.csv"
+_DAILY_CSV    = _PROJECT_ROOT / "data" / "outputs" / "backtests" / "strategy_daily_comparison.csv"
+_MODELING_CSV = _PROJECT_ROOT / "data" / "processed" / "modeling_dataset.csv"
 
 
 def _load_results() -> pd.DataFrame:
@@ -34,16 +35,28 @@ def _load_results() -> pd.DataFrame:
     return df[["strategy_name", "total_cost", "n_days"]]
 
 
+def _compute_kpis(df_results: pd.DataFrame) -> tuple[float, float]:
+    """Return (total_savings_eur, per_unit_savings_eur)."""
+    cost_map = df_results.set_index("strategy_name")["total_cost"].to_dict()
+    spot_cost = float(cost_map[STRATEGY_SPOT_ONLY])
+    heur_cost = float(cost_map[STRATEGY_HEURISTIC_POLICY])
+    total_savings = spot_cost - heur_cost
+
+    n_days = int(df_results.loc[
+        df_results["strategy_name"] == STRATEGY_SPOT_ONLY, "n_days"
+    ].iloc[0])
+    per_unit = total_savings / (MDP_D * n_days)
+    return total_savings, per_unit
+
+
 def _load_simulation() -> pd.DataFrame:
     """
-    Merge the 2025 spot prices (test.csv) with action decisions
+    Merge 2025 spot prices (modeling_dataset.csv) with action decisions
     (strategy_daily_comparison.csv) on date.
-
-    test.csv uses 'Date' (capital D); daily comparison uses 'date' (lower).
     """
-    spot = pd.read_csv(_TEST_CSV, usecols=["Date", "Spot_Price_SPEL"])
-    spot = spot.rename(columns={"Date": "date"})
-    spot["date"] = pd.to_datetime(spot["date"])
+    full = pd.read_csv(_MODELING_CSV, usecols=["date", "Spot_Price_SPEL"])
+    full["date"] = pd.to_datetime(full["date"])
+    spot = full[full["date"] >= "2025-01-01"].copy()
 
     actions = pd.read_csv(
         _DAILY_CSV,
@@ -67,8 +80,17 @@ def main() -> None:
     print(f"  Strategies: {df_results['strategy_name'].tolist()}")
     print(f"  Costs: {df_results.set_index('strategy_name')['total_cost'].to_dict()}")
 
+    total_savings, per_unit = _compute_kpis(df_results)
+    print(f"\n  KPI — Total EUR saved    : EUR {total_savings:,.2f}")
+    print(f"  KPI — EUR saved per unit : EUR {per_unit:.4f}")
+
     print("\nGenerating Plot 1: 'The Bottom Line'...")
-    plot_exec_summary_business_case(df_results, save_path=out1, show=False)
+    plot_exec_summary_business_case(
+        df_results,
+        save_path=out1,
+        show=False,
+        per_unit_savings=per_unit,
+    )
     print(f"  Saved -> {out1}")
 
     print("\nLoading 2025 simulation data...")
