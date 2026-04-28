@@ -226,7 +226,12 @@ def _prepare_model_frames(
         )
 
     train_model_df = train_df[available_features + [target_name]].dropna().copy()
-    test_model_df = test_df[available_features + [target_name]].dropna().copy()
+
+    # For test: only drop rows where INPUT FEATURES are NaN (not the target).
+    # End-of-year rows may have NaN forward-looking targets but still valid features.
+    test_feat_df = test_df[available_features].dropna().copy()
+    test_model_df = test_feat_df.copy()
+    test_model_df[target_name] = test_df.loc[test_feat_df.index, target_name]
 
     if train_model_df.empty or test_model_df.empty:
         raise QuantileModelError(
@@ -307,8 +312,11 @@ def train_single_quantile_model(
     model = GradientBoostingRegressor(**default_model_params)
     model.fit(X_train, y_train)
 
-    y_pred = pd.Series(model.predict(X_test), index=y_test.index, name=f"q_{quantile}_prediction")
-    pinball, mae, rmse = _compute_metrics(y_test, y_pred, quantile)
+    y_pred = pd.Series(model.predict(X_test), index=X_test.index, name=f"q_{quantile}_prediction")
+
+    # Compute metrics only on rows with valid targets (last h-1 rows may be NaN)
+    valid_mask = y_test.notna()
+    pinball, mae, rmse = _compute_metrics(y_test[valid_mask], y_pred[valid_mask], quantile)
 
     results = QuantileModelResults(
         quantile=float(quantile),

@@ -1,0 +1,11 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(python -c ' *)",
+      "Bash(c:UsersAlejandroGitHubData-Driven-Strategies-for-Financial-Resilience-in-Energy-Procurement.venvScriptspython.exe -c ' *)",
+      "Bash(.venv/Scripts/python.exe -c ' *)",
+      "Bash(ls .venv/Scripts/python*)",
+      "Bash(ls .venv/bin/python*)"
+    ]
+  }
+}

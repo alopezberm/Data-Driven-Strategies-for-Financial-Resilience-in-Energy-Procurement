@@ -152,11 +152,7 @@ def train_q_learning_agent(
         if agent_config is None
         else agent_config
     )
-    resolved_env_config = (
-        RLEnvironmentConfig.from_settings(get_default_settings().rl)
-        if env_config is None
-        else env_config
-    )
+    resolved_env_config = env_config if env_config is not None else RLEnvironmentConfig()
 
     logger.info("Starting RL training...")
     logger.info(f"Training dataframe shape: {training_df.shape}")

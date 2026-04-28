@@ -108,32 +108,53 @@ TAIL_VS_CENTRAL_ABS_THRESHOLD = 3.0
 
 
 # =========================
-# Factory / production model
+# MDP Factory Parameters (Single Source of Truth)
+# From Mathematical Formulation — do not change without updating rl_environment.py
 # =========================
 
-# Discrete production levels: from 50% to 100% of nominal capacity, step 10%
+MDP_P_MAX = 2000              # Maximum production capacity (units/day)
+MDP_D = 1000                  # Fixed daily demand dispatched at 09:00 (units)
+MDP_I_MAX = 3000              # Maximum warehouse capacity (units)
+MDP_E_START = 20.0            # Startup energy cost (MWh) when factory is on
+MDP_E_UNIT = 1.0              # Variable energy per unit produced (MWh/unit)
+MDP_H = 5.0                   # Inventory holding cost (EUR/unit/day)
+MDP_M = 200.0                 # Gross profit margin (EUR/unit sold)
+MDP_INITIAL_INVENTORY = 1500  # Starting inventory at episode reset (midpoint of I_max)
+
+# Production action space: 0, 100, 200, ..., 2000 (21 discrete levels)
+MDP_PROD_LEVELS: list[int] = list(range(0, MDP_P_MAX + 1, 100))
+MDP_PROD_STEP = 100
+
+# Futures block sizes (MWh): 0, 500, or 1000 MWh per tenor (M1, M2, M3)
+MDP_BLOCK_SIZES: list[int] = [0, 500, 1000]
+
+# Derived action-space dimensions (kept as constants for reuse across modules)
+MDP_N_PROD = 21               # len(range(0, 2001, 100))
+MDP_N_BLOCK = 3               # len([0, 500, 1000])
+MDP_N_ACTIONS = 567           # MDP_N_PROD * MDP_N_BLOCK**3
+
+# Spot-M1 spread column — required by the RL state space
+SPOT_M1_SPREAD_COLUMN = "Spot_M1_Spread"
+
+# =========================
+# Legacy factory constants (used by heuristic policy — do not remove)
+# =========================
+
 PRODUCTION_LEVELS = [0.5, 0.6, 0.7, 0.8, 0.9, 1.0]
 DEFAULT_PRODUCTION_LEVEL = 1.0
-PRODUCTION_STEP = 0.1  # each increase / decrease action moves by 10%
+PRODUCTION_STEP = 0.1
 
-# Energy consumption model: total_load = base_load + variable_load * production_level
-# base_load is the fixed overhead (plant lighting, pumps, HVAC) — present even at min output
-# variable_load is the process-driven component that scales with production
-FACTORY_BASE_LOAD = 0.3   # 30 % of nominal capacity, always consumed
-FACTORY_VARIABLE_LOAD = 0.7  # 70 % of nominal capacity, linear with production_level
+FACTORY_BASE_LOAD = 0.3
+FACTORY_VARIABLE_LOAD = 0.7
+FACTORY_INVENTORY_CAPACITY = 100.0
+FACTORY_INVENTORY_MIN = 0.0
+FACTORY_INITIAL_INVENTORY = 50.0
+FACTORY_DEMAND_PER_STEP = 8.0
+FACTORY_STORAGE_COST_PER_UNIT = 0.5
+FACTORY_STARTUP_ENERGY_COST = 5.0
+FACTORY_PRODUCT_PRICE = 150.0
+FACTORY_TAKEORPAY_FRACTION = 0.5
 
-# Factory MDP: inventory dynamics, take-or-pay, startup cost, product revenue
-# demand_per_step < max_production (=10) so the agent can build inventory at high output
-FACTORY_INVENTORY_CAPACITY = 100.0    # maximum goods inventory (physical units)
-FACTORY_INVENTORY_MIN = 0.0           # minimum inventory (physical units)
-FACTORY_INITIAL_INVENTORY = 50.0      # starting inventory at episode reset (units)
-FACTORY_DEMAND_PER_STEP = 8.0         # market demand per day (units) — equilibrium at production_level = 0.8
-FACTORY_STORAGE_COST_PER_UNIT = 0.5   # € per unit per day holding cost
-FACTORY_STARTUP_ENERGY_COST = 5.0     # extra MWh consumed when production transitions from 0
-FACTORY_PRODUCT_PRICE = 150.0         # € per unit of goods sold (drives revenue side of reward)
-FACTORY_TAKEORPAY_FRACTION = 0.5      # fraction of base_load committed as take-or-pay baseload
-
-# Maximum daily purchase per futures tenor (fraction of daily volume)
 MAX_HEDGE_FRACTION_M1 = 1.0
 MAX_HEDGE_FRACTION_M2 = 0.5
 MAX_HEDGE_FRACTION_M3 = 0.25

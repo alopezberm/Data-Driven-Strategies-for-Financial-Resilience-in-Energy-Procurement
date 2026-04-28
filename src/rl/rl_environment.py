@@ -1,9 +1,41 @@
 """
 rl_environment.py
 
-Lightweight reinforcement learning environment for energy procurement decisions.
-This is NOT a full Gym environment, but a clean, extensible abstraction that
-can later be upgraded to Gym / Gymnasium if needed.
+Reinforcement learning environment implementing the factory procurement MDP.
+
+MDP Parameters (Single Source of Truth — from Mathematical Formulation):
+  P_max   = 2000 units/day   maximum production capacity
+  D       = 1000 units/day   fixed daily demand dispatched at 09:00
+  I_max   = 3000 units       maximum warehouse capacity
+  e_start = 20 MWh           startup energy when factory is on
+  e_unit  = 1 MWh/unit       variable energy per unit produced
+  h       = 5 EUR/unit/day   inventory holding cost
+  M       = 200 EUR/unit     gross profit margin
+
+Action Space (Joint Compound, Discrete — 567 total):
+  P_{t+1}  ∈ {0, 100, 200, ..., 2000}   21 production levels
+  b_m1     ∈ {0, 500, 1000} MWh          3 M1 block sizes
+  b_m2     ∈ {0, 500, 1000} MWh          3 M2 block sizes
+  b_m3     ∈ {0, 500, 1000} MWh          3 M3 block sizes
+  Encoding: action_id = prod_idx * 27 + m1_idx * 9 + m2_idx * 3 + m3_idx
+
+Reward Formula (Take-or-Pay):
+  E_t         = e_start + e_unit * P_{t+1}   if P_{t+1} > 0, else 0
+  hedge_pay   = b_m1 * p_M1 + b_m2 * p_M2 + b_m3 * p_M3
+  deficit     = max(0, E_t - b_m1 - b_m2 - b_m3)
+  spot_pay    = deficit * spot_price
+  I_{t+1}     = clip(I_t + P_{t+1} - D, 0, I_max)
+  R_t         = M * P_{t+1} - h * I_{t+1} - hedge_pay - spot_pay
+
+Required State Columns:
+  q_0.5, q_0.9              (t+2 central / tail forecast)
+  q_0.5_h3, q_0.9_h3       (t+3 central / tail forecast)
+  Future_M1_Price           (M1 futures price)
+  Spot_Price_SPEL           (day-ahead spot price)
+  Spot_M1_Spread            (auto-computed as Spot - M1 when absent)
+
+Optional State Columns:
+  Future_M2_Price, Future_M3_Price  (fall back to M1 price when absent)
 """
 
 from __future__ import annotations
@@ -14,126 +46,61 @@ from typing import Any
 import pandas as pd
 
 from src.config.constants import (
-    ACTIONS,
-    ACTION_BUY_M1_FUTURE,
-    ACTION_BUY_M2_FUTURE,
-    ACTION_BUY_M3_FUTURE,
-    ACTION_DECREASE_PRODUCTION,
-    ACTION_DO_NOTHING,
-    ACTION_INCREASE_PRODUCTION,
-    ACTION_SHIFT_PRODUCTION,
-    DEFAULT_PRODUCTION_LEVEL,
-    FACTORY_BASE_LOAD,
-    FACTORY_INITIAL_INVENTORY,
-    FACTORY_INVENTORY_CAPACITY,
-    FACTORY_INVENTORY_MIN,
-    FACTORY_DEMAND_PER_STEP,
-    FACTORY_STORAGE_COST_PER_UNIT,
-    FACTORY_STARTUP_ENERGY_COST,
-    FACTORY_PRODUCT_PRICE,
-    FACTORY_TAKEORPAY_FRACTION,
-    FACTORY_VARIABLE_LOAD,
+    MDP_D,
+    MDP_E_START,
+    MDP_E_UNIT,
+    MDP_H,
+    MDP_I_MAX,
+    MDP_INITIAL_INVENTORY,
+    MDP_M,
+    MDP_N_ACTIONS,
+    MDP_P_MAX,
     PRIMARY_FUTURE_COLUMN,
-    PRODUCTION_LEVELS,
-    PRODUCTION_STEP,
     Q50_COLUMN,
     Q50_H3_COLUMN,
     Q90_COLUMN,
     Q90_H3_COLUMN,
     SECONDARY_FUTURE_COLUMN,
-    validate_action_catalog,
+    SPOT_M1_SPREAD_COLUMN,
 )
-from src.config.settings import RLSettings, get_default_settings
+from src.rl.utils_rl import decode_compound_action
 
 
 class RLEnvironmentError(Exception):
     """Raised when the RL environment cannot be initialized or stepped safely."""
 
 
+_M3_FUTURE_COLUMN = "Future_M3_Price"
+
+
 @dataclass
 class RLEnvironmentConfig:
+    """Column-name mappings and initial-state for the RL environment.
+
+    All factory physics (P_max, D, I_max, e_start, e_unit, h, M) are fixed
+    by the MDP formulation in constants.py.  This config only controls which
+    dataframe columns supply market data and the starting inventory level.
+    """
+
     q50_column: str = Q50_COLUMN
     q90_column: str = Q90_COLUMN
-    # Horizon t+3 forecast columns (optional — absent columns are silently skipped)
     q50_h3_column: str = Q50_H3_COLUMN
     q90_h3_column: str = Q90_H3_COLUMN
-    future_column: str = PRIMARY_FUTURE_COLUMN
+    future_m1_column: str = PRIMARY_FUTURE_COLUMN
     future_m2_column: str = SECONDARY_FUTURE_COLUMN
+    future_m3_column: str = _M3_FUTURE_COLUMN
     spot_column: str = "Spot_Price_SPEL"
-    tail_vs_future_abs_column: str = "tail_vs_future_abs"
-    tail_vs_central_abs_column: str = "tail_vs_central_abs"
-    weekend_column: str = "is_weekend"
-    holiday_column: str = "Is_national_holiday"
-    action_column: str = "action"
-
-    # Reward shaping
-    risk_aversion: float = 0.0
-    hedge_cost_penalty: float = 0.0
-    shift_penalty: float = 2.0
-    action_penalty: float = 0.0
-
-    # Factory model — energy consumption = base_load + variable_load * production_level
-    factory_base_load: float = FACTORY_BASE_LOAD
-    factory_variable_load: float = FACTORY_VARIABLE_LOAD
-    initial_production_level: float = DEFAULT_PRODUCTION_LEVEL
-
-    # When True the agent may use the 7-action extended catalog;
-    # when False only the original 3 actions (0-2) are valid (backward-compat).
-    use_extended_actions: bool = False
-
-    # Factory MDP: inventory dynamics, take-or-pay, startup cost, product revenue.
-    # All factory MDP logic is gated by use_factory_mdp=True so existing code is unaffected.
-    use_factory_mdp: bool = False
-    inventory_capacity: float = FACTORY_INVENTORY_CAPACITY
-    inventory_min: float = FACTORY_INVENTORY_MIN
-    initial_inventory: float = FACTORY_INITIAL_INVENTORY
-    demand_per_step: float = FACTORY_DEMAND_PER_STEP
-    storage_cost_per_unit: float = FACTORY_STORAGE_COST_PER_UNIT
-    startup_energy_cost: float = FACTORY_STARTUP_ENERGY_COST
-    product_price: float = FACTORY_PRODUCT_PRICE
-    takeorpay_fraction: float = FACTORY_TAKEORPAY_FRACTION
-
-    @classmethod
-    def from_settings(cls, settings: RLSettings) -> "RLEnvironmentConfig":
-        """Build environment configuration from centralized RL settings."""
-        return cls(
-            q50_column=Q50_COLUMN,
-            q90_column=Q90_COLUMN,
-            future_column=PRIMARY_FUTURE_COLUMN,
-            spot_column="Spot_Price_SPEL",
-            tail_vs_future_abs_column="tail_vs_future_abs",
-            tail_vs_central_abs_column="tail_vs_central_abs",
-            weekend_column="is_weekend",
-            holiday_column="Is_national_holiday",
-            action_column="action",
-            risk_aversion=settings.risk_aversion,
-            hedge_cost_penalty=settings.hedge_cost_penalty,
-            shift_penalty=settings.heuristic_shift_threshold,
-            action_penalty=0.0,
-        )
-
-
-def get_default_rl_settings() -> RLSettings:
-    """Return default RL settings from the project configuration."""
-    return get_default_settings().rl
-
-
-
-def _get_config(config: RLEnvironmentConfig | None) -> RLEnvironmentConfig:
-    """Resolve an explicit environment config or build one from project settings."""
-    if config is not None:
-        return config
-    return RLEnvironmentConfig.from_settings(get_default_rl_settings())
-
+    spot_m1_spread_column: str = SPOT_M1_SPREAD_COLUMN
+    initial_inventory: int = MDP_INITIAL_INVENTORY
 
 
 class EnergyRLEnvironment:
     """
-    Simple step-based environment for sequential decision making.
+    Step-based factory procurement environment.
 
-    State = row of dataframe
-    Action = discrete (e.g., 0: do nothing, 1: hedge, 2: shift)
-    Reward = function of future price vs tail risk
+    State  : market forecasts + Spot-M1 spread + inventory level
+    Action : integer in [0, 567) encoding (P_{t+1}, b_m1, b_m2, b_m3)
+    Reward : R_t = M*P - h*I_{t+1} - hedge_payment - spot_deficit_payment
     """
 
     def __init__(
@@ -141,411 +108,224 @@ class EnergyRLEnvironment:
         df: pd.DataFrame,
         config: RLEnvironmentConfig | None = None,
     ):
-        validate_action_catalog()
-        self.config = _get_config(config)
+        self.config = config or RLEnvironmentConfig()
         self.df = self._validate_df(df)
+        self.current_step: int = 0
+        self.done: bool = False
+        self.inventory: float = float(self.config.initial_inventory)
 
-        self.current_step = 0
-        self.done = False
-        # Factory state: production level (fraction of nominal capacity)
-        self.production_level: float = self.config.initial_production_level
-        # Factory MDP: goods inventory (physical units)
-        self.inventory: float = self.config.initial_inventory
-
-    # =========================
+    # ------------------------------------------------------------------
     # Validation
-    # =========================
+    # ------------------------------------------------------------------
 
     def _validate_df(self, df: pd.DataFrame) -> pd.DataFrame:
-        """Validate the RL environment input dataframe."""
         if df.empty:
             raise RLEnvironmentError("Input dataframe is empty.")
 
+        c = self.config
         required = [
-            self.config.q50_column,
-            self.config.q90_column,
-            self.config.future_column,
+            c.q50_column,
+            c.q90_column,
+            c.q50_h3_column,
+            c.q90_h3_column,
+            c.future_m1_column,
+            c.spot_column,
         ]
-        missing = [c for c in required if c not in df.columns]
+        missing = [col for col in required if col not in df.columns]
         if missing:
             raise RLEnvironmentError(f"Missing required columns: {missing}")
 
         if df[required].isna().any().any():
             raise RLEnvironmentError(
-                "RL environment input contains missing values in required state columns."
+                "RL environment input contains NaN values in required state columns."
             )
 
-        result_df = df.copy()
+        result = df.copy().reset_index(drop=True)
 
-        optional_numeric_columns = [
-            self.config.spot_column,
-            self.config.tail_vs_future_abs_column,
-            self.config.tail_vs_central_abs_column,
-            self.config.weekend_column,
-            self.config.holiday_column,
-        ]
-        for column in optional_numeric_columns:
-            if column in result_df.columns:
-                result_df[column] = pd.to_numeric(result_df[column], errors="coerce")
+        # Auto-compute Spot_M1_Spread when absent
+        if c.spot_m1_spread_column not in result.columns:
+            result[c.spot_m1_spread_column] = (
+                result[c.spot_column] - result[c.future_m1_column]
+            )
 
-        return result_df.reset_index(drop=True)
+        for col in [c.future_m2_column, c.future_m3_column, c.spot_m1_spread_column]:
+            if col in result.columns:
+                result[col] = pd.to_numeric(result[col], errors="coerce")
+
+        return result
 
     def _validate_action(self, action: int) -> None:
-        """Validate that the provided encoded action belongs to the supported discrete action space."""
-        if self.config.use_extended_actions:
-            valid = set(range(len(ACTIONS)))
-            if action not in valid:
-                raise RLEnvironmentError(
-                    f"Unsupported action '{action}'. Extended mode supports 0–{len(ACTIONS)-1}."
-                )
-        else:
-            if action not in {0, 1, 2}:
-                raise RLEnvironmentError(
-                    f"Unsupported action '{action}'. Expected one of: 0, 1, 2."
-                )
+        if not isinstance(action, int) or not (0 <= action < MDP_N_ACTIONS):
+            raise RLEnvironmentError(
+                f"Invalid action {action!r}. Must be int in [0, {MDP_N_ACTIONS})."
+            )
 
-    # =========================
+    # ------------------------------------------------------------------
     # Core RL API
-    # =========================
+    # ------------------------------------------------------------------
 
     def reset(self) -> dict[str, Any]:
-        """Reset environment to initial state, including factory production level and inventory."""
+        """Reset environment to initial state and return the first observation."""
         self.current_step = 0
         self.done = False
-        self.production_level = self.config.initial_production_level
-        self.inventory = self.config.initial_inventory
+        self.inventory = float(self.config.initial_inventory)
         return self._get_state()
 
-    def step(self, action: int) -> tuple[dict[str, float], float, bool, dict[str, Any]]:
-        """Apply one encoded action, observe reward, and transition to the next state."""
+    def step(
+        self, action: int
+    ) -> tuple[dict[str, float], float, bool, dict[str, Any]]:
+        """Apply action, compute reward, advance to next step."""
         if self.done:
-            raise RLEnvironmentError("Episode already finished. Call reset().")
+            raise RLEnvironmentError("Episode finished. Call reset().")
         self._validate_action(action)
 
-        reward = self._compute_reward(action)
+        prod, b_m1, b_m2, b_m3 = decode_compound_action(action)
 
-        row = self.df.iloc[self.current_step]
-        info = {
-            "step": self.current_step,
-            "action": action,
-            "forecast_central": float(row[self.config.q50_column]),
-            "forecast_tail": float(row[self.config.q90_column]),
-            "current_m1_future": float(row[self.config.future_column]),
-        }
-        if self.config.spot_column in row.index and pd.notna(row[self.config.spot_column]):
-            info["current_spot"] = float(row[self.config.spot_column])
+        # Enforce inventory feasibility: don't overfill warehouse
+        prod = _feasible_production(prod, self.inventory)
 
-        self.current_step += 1
+        reward = self._compute_reward(prod, b_m1, b_m2, b_m3)
 
-        if self.current_step >= len(self.df):
-            self.done = True
-            next_state = {}
-        else:
-            next_state = self._get_state()
-
-        return next_state, reward, self.done, info
-
-    # =========================
-    # State
-    # =========================
-
-    def _get_state(self) -> dict[str, float]:
-        """Return the current RL state as a compact numeric dictionary."""
-        row = self.df.iloc[self.current_step]
-
-        state = {
-            "forecast_central": float(row[self.config.q50_column]),
-            "forecast_tail": float(row[self.config.q90_column]),
-            "current_m1_future": float(row[self.config.future_column]),
-        }
-
-        if self.config.spot_column in row.index and pd.notna(row[self.config.spot_column]):
-            state["current_spot"] = float(row[self.config.spot_column])
-
-        if (
-            self.config.tail_vs_future_abs_column in row.index
-            and pd.notna(row[self.config.tail_vs_future_abs_column])
-        ):
-            state["tail_vs_future_abs"] = float(row[self.config.tail_vs_future_abs_column])
-        else:
-            state["tail_vs_future_abs"] = state["forecast_tail"] - state["current_m1_future"]
-
-        if (
-            self.config.tail_vs_central_abs_column in row.index
-            and pd.notna(row[self.config.tail_vs_central_abs_column])
-        ):
-            state["tail_vs_central_abs"] = float(row[self.config.tail_vs_central_abs_column])
-        else:
-            state["tail_vs_central_abs"] = state["forecast_tail"] - state["forecast_central"]
-
-        if self.config.weekend_column in row.index and pd.notna(row[self.config.weekend_column]):
-            state["is_weekend"] = float(row[self.config.weekend_column])
-        else:
-            state["is_weekend"] = 0.0
-
-        if self.config.holiday_column in row.index and pd.notna(row[self.config.holiday_column]):
-            state["is_holiday"] = float(row[self.config.holiday_column])
-        else:
-            state["is_holiday"] = 0.0
-
-        # Horizon t+3 forecasts (optional — included only when the columns exist and are non-NaN)
-        if (
-            self.config.q50_h3_column in row.index
-            and pd.notna(row[self.config.q50_h3_column])
-        ):
-            state["forecast_central_h3"] = float(row[self.config.q50_h3_column])
-
-        if (
-            self.config.q90_h3_column in row.index
-            and pd.notna(row[self.config.q90_h3_column])
-        ):
-            state["forecast_tail_h3"] = float(row[self.config.q90_h3_column])
-
-        # Factory model state components
-        state["production_level"] = float(self.production_level)
-        state["energy_consumption"] = float(
-            self.config.factory_base_load
-            + self.config.factory_variable_load * self.production_level
+        # I_{t+1} = clip(I_t + P - D, 0, I_max)
+        self.inventory = float(
+            max(0.0, min(float(MDP_I_MAX), self.inventory + prod - MDP_D))
         )
 
-        # Factory MDP: inventory state (only exposed when factory MDP is active)
-        if self.config.use_factory_mdp:
-            state["inventory"] = float(self.inventory)
-            state["inventory_bin"] = float(self._inventory_bin())
+        info: dict[str, Any] = {
+            "step": self.current_step,
+            "production": prod,
+            "m1_block_mwh": b_m1,
+            "m2_block_mwh": b_m2,
+            "m3_block_mwh": b_m3,
+            "inventory_after": self.inventory,
+        }
 
-        return state
+        self.current_step += 1
+        self.done = self.current_step >= len(self.df)
+        next_state: dict[str, float] = {} if self.done else self._get_state()
+        return next_state, reward, self.done, info
+
+    # ------------------------------------------------------------------
+    # State
+    # ------------------------------------------------------------------
+
+    def _get_state(self) -> dict[str, float]:
+        """Return the current observation as a numeric dictionary."""
+        row = self.df.iloc[self.current_step]
+        c = self.config
+
+        return {
+            "forecast_central": float(row[c.q50_column]),
+            "forecast_tail": float(row[c.q90_column]),
+            "forecast_central_h3": float(row[c.q50_h3_column]),
+            "forecast_tail_h3": float(row[c.q90_h3_column]),
+            "m1_price": float(row[c.future_m1_column]),
+            "spot_price": float(row[c.spot_column]),
+            "spot_m1_spread": float(row[c.spot_m1_spread_column]),
+            "inventory": float(self.inventory),
+            "inventory_bin": float(self._inventory_bin()),
+        }
 
     def _inventory_bin(self) -> int:
-        """Discretize current inventory into 3 tabular-RL bins: 0=low, 1=medium, 2=high."""
-        span = max(self.config.inventory_capacity - self.config.inventory_min, 1.0)
-        ratio = (self.inventory - self.config.inventory_min) / span
+        """Discretize inventory into three coarse bins: 0=low, 1=mid, 2=high."""
+        ratio = self.inventory / MDP_I_MAX
         if ratio < 0.33:
             return 0
         if ratio < 0.67:
             return 1
         return 2
 
-    # =========================
-    # Reward function
-    # =========================
+    # ------------------------------------------------------------------
+    # Reward
+    # ------------------------------------------------------------------
 
-    def _compute_reward(self, action: int) -> float:
+    def _compute_reward(
+        self,
+        prod: int,
+        b_m1: int,
+        b_m2: int,
+        b_m3: int,
+    ) -> float:
         """
-        Compute daily reward for RL training.
+        R_t = M * P_{t+1} - h * I_{t+1} - hedge_payment - spot_payment
 
-        When use_factory_mdp=False (default, backward-compatible):
-            Reward = –total_energy_cost.
-            Action selects the price at which energy is purchased.
-
-        When use_factory_mdp=True (realistic factory + hedging MDP):
-            Reward = Revenue − StorageCost − TakeOrPayCost − VariableEnergyCost
-            Implements: inventory dynamics, take-or-pay baseload, startup energy cost.
-        """
-        if self.config.use_factory_mdp:
-            return self._compute_factory_mdp_reward(action)
-        return self._compute_cost_only_reward(action)
-
-    def _compute_cost_only_reward(self, action: int) -> float:
-        """
-        Original cost-minimisation reward (backward-compatible).
-
-        Action selects the unit price for total energy consumed this step.
-        Extended actions 3/4 also mutate production_level immediately.
+        hedge_payment = b_m1*p_M1 + b_m2*p_M2 + b_m3*p_M3  (Fixed Hedge Payment)
+        spot_payment  = max(0, E_t - total_hedged) * spot    (Spot deficit)
+        E_t           = e_start + e_unit * P  if P > 0  else 0
+        I_{t+1}       = clip(I_t + P - D, 0, I_max)
         """
         row = self.df.iloc[self.current_step]
+        c = self.config
 
-        central_forecast = float(row[self.config.q50_column])
-        future_price = float(row[self.config.future_column])
-        spot_price = (
-            float(row[self.config.spot_column])
-            if self.config.spot_column in row.index and pd.notna(row[self.config.spot_column])
-            else central_forecast
+        spot_price = float(row[c.spot_column])
+        m1_price = float(row[c.future_m1_column])
+        m2_price = float(
+            row[c.future_m2_column]
+            if c.future_m2_column in row.index and pd.notna(row[c.future_m2_column])
+            else m1_price
+        )
+        m3_price = float(
+            row[c.future_m3_column]
+            if c.future_m3_column in row.index and pd.notna(row[c.future_m3_column])
+            else m2_price
         )
 
-        energy = (
-            self.config.factory_base_load
-            + self.config.factory_variable_load * self.production_level
-        )
+        # Energy required this step
+        e_req = (MDP_E_START + MDP_E_UNIT * prod) if prod > 0 else 0.0
 
-        if action == 0:  # do_nothing
-            realized_cost = energy * spot_price
-        elif action == 1:  # buy_m1_future
-            realized_cost = energy * (future_price + self.config.hedge_cost_penalty)
-        elif action == 2:  # shift_production (legacy)
-            shifted_fraction = 0.5
-            realized_cost = energy * (
-                (1.0 - shifted_fraction) * spot_price
-                + shifted_fraction * self.config.shift_penalty
-            )
-        elif action == 3:  # increase_production — immediate effect, same step
-            new_level = min(self.production_level + PRODUCTION_STEP, PRODUCTION_LEVELS[-1])
-            self.production_level = new_level
-            new_energy = self.config.factory_base_load + self.config.factory_variable_load * new_level
-            realized_cost = new_energy * spot_price
-        elif action == 4:  # decrease_production — immediate effect, same step
-            new_level = max(self.production_level - PRODUCTION_STEP, PRODUCTION_LEVELS[0])
-            self.production_level = new_level
-            new_energy = self.config.factory_base_load + self.config.factory_variable_load * new_level
-            realized_cost = new_energy * spot_price
-        elif action == 5:  # buy_m2_future
-            m2_price = (
-                float(row[self.config.future_m2_column])
-                if self.config.future_m2_column in row.index and pd.notna(row[self.config.future_m2_column])
-                else future_price * 1.01
-            )
-            realized_cost = energy * (m2_price + self.config.hedge_cost_penalty)
-        elif action == 6:  # buy_m3_future
-            m2_price = (
-                float(row[self.config.future_m2_column])
-                if self.config.future_m2_column in row.index and pd.notna(row[self.config.future_m2_column])
-                else future_price * 1.01
-            )
-            m3_price = m2_price * 1.01
-            realized_cost = energy * (m3_price + self.config.hedge_cost_penalty)
-        else:
-            realized_cost = energy * spot_price
+        # Fixed Hedge Payment
+        hedge_payment = b_m1 * m1_price + b_m2 * m2_price + b_m3 * m3_price
 
-        if action != 0:
-            realized_cost += self.config.action_penalty
+        # Spot Payment for any energy deficit not covered by futures blocks
+        total_hedged = float(b_m1 + b_m2 + b_m3)
+        deficit = max(0.0, e_req - total_hedged)
+        spot_payment = deficit * spot_price
 
-        return float(-realized_cost)
+        # Next-step inventory (used for holding cost)
+        i_next = max(0.0, min(float(MDP_I_MAX), self.inventory + prod - MDP_D))
 
-    def _compute_factory_mdp_reward(self, action: int) -> float:
-        """
-        Realistic factory + hedging MDP reward.
-
-        Formulation
-        -----------
-        E_startup  = startup_energy_cost  if production_level > 0  else 0
-        E_req      = E_startup + base_load + variable_load × production_level
-        committed  = base_load × takeorpay_fraction          (always paid at futures price)
-        remaining  = E_req − committed                       (priced via action)
-
-        Reward = Revenue − StorageCost − TakeOrPayCost − VariableEnergyCost
-
-        Inventory dynamics (applied after reward):
-            production_units = production_level × demand_per_step
-            I_{t+1} = clip(I_t + production_units − demand_per_step, I_min, I_max)
-
-        Temporal consistency
-        --------------------
-        At step t the agent observes state_t (prices, inventory_t) and chooses action_t.
-        Production adjustments (actions 3/4) take effect immediately at t so revenue
-        and energy cost reflect the chosen output level.  Inventory is updated after
-        reward so I_{t+1} is the state available at the next observation.
-        """
-        row = self.df.iloc[self.current_step]
-
-        future_price = float(row[self.config.future_column])
-        spot_price = (
-            float(row[self.config.spot_column])
-            if self.config.spot_column in row.index and pd.notna(row[self.config.spot_column])
-            else float(row[self.config.q50_column])
-        )
-        m2_price = (
-            float(row[self.config.future_m2_column])
-            if self.config.future_m2_column in row.index
-            and pd.notna(row[self.config.future_m2_column])
-            else future_price * 1.01
-        )
-        m3_price = m2_price * 1.01
-
-        # 1. Apply production decision immediately so all quantities use the new level
-        if action == ACTION_INCREASE_PRODUCTION:
-            self.production_level = min(
-                self.production_level + PRODUCTION_STEP, PRODUCTION_LEVELS[-1]
-            )
-        elif action == ACTION_DECREASE_PRODUCTION:
-            self.production_level = max(
-                self.production_level - PRODUCTION_STEP, PRODUCTION_LEVELS[0]
-            )
-
-        # 2. Energy requirement: startup (fixed cost when on) + process energy
-        startup_energy = (
-            self.config.startup_energy_cost if self.production_level > 0 else 0.0
-        )
-        process_energy = (
-            self.config.factory_base_load
-            + self.config.factory_variable_load * self.production_level
-        )
-        total_energy_req = startup_energy + process_energy
-
-        # 3. Take-or-pay: committed baseload fraction always paid at futures price
-        committed_energy = self.config.factory_base_load * self.config.takeorpay_fraction
-        takeorpay_cost = committed_energy * future_price
-
-        # 4. Remaining energy: priced according to action
-        remaining_energy = max(0.0, total_energy_req - committed_energy)
-
-        if action in {ACTION_DO_NOTHING, ACTION_INCREASE_PRODUCTION, ACTION_DECREASE_PRODUCTION}:
-            variable_cost = remaining_energy * spot_price
-        elif action == ACTION_BUY_M1_FUTURE:
-            variable_cost = remaining_energy * (future_price + self.config.hedge_cost_penalty)
-        elif action == ACTION_SHIFT_PRODUCTION:  # legacy action — keep functioning
-            variable_cost = remaining_energy * (
-                0.5 * spot_price + 0.5 * self.config.shift_penalty
-            )
-        elif action == ACTION_BUY_M2_FUTURE:
-            variable_cost = remaining_energy * (m2_price + self.config.hedge_cost_penalty)
-        elif action == ACTION_BUY_M3_FUTURE:
-            variable_cost = remaining_energy * (m3_price + self.config.hedge_cost_penalty)
-        else:
-            variable_cost = remaining_energy * spot_price
-
-        if action not in {
-            ACTION_DO_NOTHING,
-            ACTION_INCREASE_PRODUCTION,
-            ACTION_DECREASE_PRODUCTION,
-        }:
-            variable_cost += self.config.action_penalty
-
-        # 5. Revenue from goods produced this step
-        production_units = self.production_level * self.config.demand_per_step
-        revenue = production_units * self.config.product_price
-
-        # 6. Storage cost on inventory held at the start of this step
-        storage_cost = self.inventory * self.config.storage_cost_per_unit
-
-        # 7. Update inventory for next step: I_{t+1} = clip(I_t + P_t − D_t, min, max)
-        self.inventory = float(
-            max(
-                self.config.inventory_min,
-                min(
-                    self.config.inventory_capacity,
-                    self.inventory + production_units - self.config.demand_per_step,
-                ),
-            )
-        )
-
-        reward = revenue - storage_cost - takeorpay_cost - variable_cost
-        return float(reward)
+        return float(MDP_M * prod - MDP_H * i_next - hedge_payment - spot_payment)
 
 
-# =========================
-# Quick test
-# =========================
+# ------------------------------------------------------------------
+# Private helper
+# ------------------------------------------------------------------
+
+
+def _feasible_production(prod: int, inventory: float) -> int:
+    """Cap production to prevent warehouse overflow, then snap to nearest valid level."""
+    max_feasible = int(MDP_I_MAX - inventory + MDP_D)
+    capped = min(prod, max(0, max_feasible))
+    snapped = round(capped / 100) * 100
+    return int(max(0, min(MDP_P_MAX, snapped)))
+
+
+# ------------------------------------------------------------------
+# Smoke test
+# ------------------------------------------------------------------
 
 if __name__ == "__main__":
     example_df = pd.DataFrame(
         {
-            Q50_COLUMN: [50, 55, 60],
-            Q90_COLUMN: [60, 70, 80],
-            PRIMARY_FUTURE_COLUMN: [52, 57, 63],
-            "Spot_Price_SPEL": [51, 58, 66],
-            "tail_vs_future_abs": [8, 13, 17],
-            "tail_vs_central_abs": [10, 15, 20],
-            "is_weekend": [0, 0, 1],
-            "Is_national_holiday": [0, 0, 0],
+            Q50_COLUMN: [50.0, 55.0, 60.0],
+            Q90_COLUMN: [60.0, 70.0, 80.0],
+            Q50_H3_COLUMN: [52.0, 58.0, 63.0],
+            Q90_H3_COLUMN: [65.0, 75.0, 85.0],
+            PRIMARY_FUTURE_COLUMN: [52.0, 57.0, 63.0],
+            "Spot_Price_SPEL": [51.0, 58.0, 66.0],
+            SECONDARY_FUTURE_COLUMN: [53.0, 58.0, 64.0],
+            _M3_FUTURE_COLUMN: [54.0, 59.0, 65.0],
         }
     )
 
     env = EnergyRLEnvironment(example_df)
-
     state = env.reset()
     print("Initial state:", state)
 
     done = False
+    step = 0
     while not done:
-        action = 1  # always hedge (dummy policy)
-        next_state, reward, done, _ = env.step(action)
-        print(f"Reward: {reward:.2f}, Next state: {next_state}")
+        action = 10 * 27 + 1 * 9 + 0 * 3 + 0  # P=1000, M1=500, M2=0, M3=0
+        next_state, reward, done, info = env.step(action)
+        print(f"Step {step}: reward={reward:.2f}, info={info}")
+        step += 1

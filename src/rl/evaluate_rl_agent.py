@@ -23,7 +23,7 @@ import pandas as pd
 from src.config.constants import DATE_COLUMN
 from src.decision.rl_agent import QLearningAgent, RLAgentError
 from src.rl.rl_environment import RLEnvironmentConfig
-from src.rl.utils_rl import RLUtilsError, decode_action_id
+from src.rl.utils_rl import RLUtilsError, compound_action_label, decode_compound_action
 from src.utils.logger import get_logger
 
 
@@ -118,34 +118,32 @@ def evaluate_trained_rl_agent(
     decisions_rows: list[dict[str, Any]] = []
     state_action_rows: list[dict[str, Any]] = []
 
-    for idx, (_, row) in enumerate(evaluation_df.iterrows()):
-        state = {
-            "forecast_central": float(row[getattr(env_config, "q50_column", "q_0.5")])
-            if getattr(env_config, "q50_column", "q_0.5") in row.index
-            else float(row["q_0.5"]),
-            "forecast_tail": float(row[getattr(env_config, "q90_column", "q_0.9")])
-            if getattr(env_config, "q90_column", "q_0.9") in row.index
-            else float(row["q_0.9"]),
-            "current_m1_future": float(
-                row[getattr(env_config, "future_column", "Future_M1_Price")]
-            )
-            if getattr(env_config, "future_column", "Future_M1_Price") in row.index
-            else float(row["Future_M1_Price"]),
-        }
+    c = env_config or RLEnvironmentConfig()
 
-        for optional_source, output_key in [
-            (getattr(env_config, "spot_column", "Spot_Price_SPEL"), "current_spot"),
-            (getattr(env_config, "tail_vs_future_abs_column", "tail_vs_future_abs"), "tail_vs_future_abs"),
-            (getattr(env_config, "tail_vs_central_abs_column", "tail_vs_central_abs"), "tail_vs_central_abs"),
-            (getattr(env_config, "weekend_column", "is_weekend"), "is_weekend"),
-            (getattr(env_config, "holiday_column", "Is_national_holiday"), "is_holiday"),
-        ]:
-            if optional_source in row.index and pd.notna(row[optional_source]):
-                state[output_key] = float(row[optional_source])
+    for idx, (_, row) in enumerate(evaluation_df.iterrows()):
+        m1_price = float(row[c.future_m1_column]) if c.future_m1_column in row.index else 0.0
+        spot_price = float(row[c.spot_column]) if c.spot_column in row.index else m1_price
+
+        state: dict[str, Any] = {
+            "forecast_central": float(row[c.q50_column]) if c.q50_column in row.index else 0.0,
+            "forecast_tail": float(row[c.q90_column]) if c.q90_column in row.index else 0.0,
+            "forecast_central_h3": float(row[c.q50_h3_column]) if c.q50_h3_column in row.index else 0.0,
+            "forecast_tail_h3": float(row[c.q90_h3_column]) if c.q90_h3_column in row.index else 0.0,
+            "m1_price": m1_price,
+            "spot_price": spot_price,
+            "spot_m1_spread": (
+                float(row[c.spot_m1_spread_column])
+                if c.spot_m1_spread_column in row.index and pd.notna(row[c.spot_m1_spread_column])
+                else spot_price - m1_price
+            ),
+            "inventory": float(c.initial_inventory),
+            "inventory_bin": 1.0,
+        }
 
         try:
             action_id = agent.select_action(state)
-            action_label = decode_action_id(action_id)
+            prod, m1, m2, m3 = decode_compound_action(action_id)
+            action_label = compound_action_label(action_id)
         except (RLAgentError, RLUtilsError, KeyError, ValueError, TypeError) as exc:
             raise RLEvaluationError(f"Failed to evaluate RL action on row {idx}: {exc}") from exc
 
@@ -153,6 +151,10 @@ def evaluate_trained_rl_agent(
             "row_id": idx,
             "action_id": int(action_id),
             "recommended_action": action_label,
+            "production_units": int(prod),
+            "m1_block_mwh": int(m1),
+            "m2_block_mwh": int(m2),
+            "m3_block_mwh": int(m3),
             "action_source": "rl_policy",
         }
         if date_column is not None:

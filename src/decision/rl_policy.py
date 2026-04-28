@@ -18,10 +18,18 @@ from typing import Any
 
 import pandas as pd
 
-from src.config.constants import DATE_COLUMN, PRIMARY_FUTURE_COLUMN, Q50_COLUMN, Q90_COLUMN
+from src.config.constants import (
+    DATE_COLUMN,
+    PRIMARY_FUTURE_COLUMN,
+    Q50_COLUMN,
+    Q50_H3_COLUMN,
+    Q90_COLUMN,
+    Q90_H3_COLUMN,
+    SPOT_M1_SPREAD_COLUMN,
+)
 from src.decision.rl_agent import QLearningAgent, RLAgentError
 from src.rl.rl_environment import RLEnvironmentConfig
-from src.rl.utils_rl import RLUtilsError, decode_action_id
+from src.rl.utils_rl import RLUtilsError, compound_action_label, decode_compound_action
 from src.utils.logger import get_logger
 
 
@@ -70,31 +78,36 @@ def _build_state_from_row(
     required_columns = [
         env_config.q50_column,
         env_config.q90_column,
-        env_config.future_column,
+        env_config.q50_h3_column,
+        env_config.q90_h3_column,
+        env_config.future_m1_column,
+        env_config.spot_column,
     ]
-    missing_columns = [column for column in required_columns if column not in row.index]
+    missing_columns = [col for col in required_columns if col not in row.index]
     if missing_columns:
         raise RLPolicyError(
             f"Policy input row is missing required RL state columns: {missing_columns}"
         )
 
-    state = {
+    m1_price = float(row[env_config.future_m1_column])
+    spot_price = float(row[env_config.spot_column])
+
+    state: dict[str, float] = {
         "forecast_central": float(row[env_config.q50_column]),
         "forecast_tail": float(row[env_config.q90_column]),
-        "current_m1_future": float(row[env_config.future_column]),
+        "forecast_central_h3": float(row[env_config.q50_h3_column]),
+        "forecast_tail_h3": float(row[env_config.q90_h3_column]),
+        "m1_price": m1_price,
+        "spot_price": spot_price,
+        "spot_m1_spread": (
+            float(row[env_config.spot_m1_spread_column])
+            if env_config.spot_m1_spread_column in row.index
+            and pd.notna(row[env_config.spot_m1_spread_column])
+            else spot_price - m1_price
+        ),
+        "inventory": float(env_config.initial_inventory),
+        "inventory_bin": 1.0,  # default mid-bin when no live inventory is tracked
     }
-
-    optional_mappings = [
-        (env_config.spot_column, "current_spot"),
-        (env_config.tail_vs_future_abs_column, "tail_vs_future_abs"),
-        (env_config.tail_vs_central_abs_column, "tail_vs_central_abs"),
-        (env_config.weekend_column, "is_weekend"),
-        (env_config.holiday_column, "is_holiday"),
-    ]
-    for source_column, state_key in optional_mappings:
-        if source_column in row.index and pd.notna(row[source_column]):
-            state[state_key] = float(row[source_column])
-
     return state
 
 
@@ -157,7 +170,8 @@ def apply_rl_policy(
         try:
             state = _build_state_from_row(row, resolved_env_config)
             action_id = agent.select_action(state)
-            action_label = decode_action_id(action_id)
+            prod, m1, m2, m3 = decode_compound_action(action_id)
+            action_label = compound_action_label(action_id)
         except (RLAgentError, RLUtilsError, ValueError, TypeError, KeyError) as exc:
             raise RLPolicyError(f"Failed to generate RL action on row {idx}: {exc}") from exc
 
@@ -165,6 +179,10 @@ def apply_rl_policy(
             "row_id": idx,
             "action_id": int(action_id),
             "recommended_action": action_label,
+            "production_units": int(prod),
+            "m1_block_mwh": int(m1),
+            "m2_block_mwh": int(m2),
+            "m3_block_mwh": int(m3),
             "action_source": "rl_policy",
         }
         if DATE_COLUMN in row.index:
@@ -206,19 +224,20 @@ def apply_rl_policy(
 # =========================
 
 if __name__ == "__main__":
+    from src.config.constants import SECONDARY_FUTURE_COLUMN
     from src.rl.train_rl_agent import train_q_learning_agent
 
     example_df = pd.DataFrame(
         {
             DATE_COLUMN: pd.date_range("2025-01-01", periods=6, freq="D"),
-            Q50_COLUMN: [50, 55, 60, 58, 62, 64],
-            Q90_COLUMN: [60, 68, 78, 66, 80, 82],
-            PRIMARY_FUTURE_COLUMN: [52, 57, 63, 60, 65, 67],
-            "Spot_Price_SPEL": [51, 58, 66, 61, 69, 70],
-            "tail_vs_future_abs": [8, 11, 15, 6, 15, 15],
-            "tail_vs_central_abs": [10, 13, 18, 8, 18, 18],
-            "is_weekend": [0, 0, 1, 0, 0, 1],
-            "Is_national_holiday": [0, 0, 0, 0, 0, 0],
+            Q50_COLUMN: [50.0, 55.0, 60.0, 58.0, 62.0, 64.0],
+            Q90_COLUMN: [60.0, 68.0, 78.0, 66.0, 80.0, 82.0],
+            Q50_H3_COLUMN: [52.0, 57.0, 62.0, 59.0, 64.0, 66.0],
+            Q90_H3_COLUMN: [65.0, 73.0, 83.0, 71.0, 85.0, 87.0],
+            PRIMARY_FUTURE_COLUMN: [52.0, 57.0, 63.0, 60.0, 65.0, 67.0],
+            SECONDARY_FUTURE_COLUMN: [53.0, 58.0, 64.0, 61.0, 66.0, 68.0],
+            "Future_M3_Price": [54.0, 59.0, 65.0, 62.0, 67.0, 69.0],
+            "Spot_Price_SPEL": [51.0, 58.0, 66.0, 61.0, 69.0, 70.0],
         }
     )
 
@@ -226,8 +245,9 @@ if __name__ == "__main__":
     policy_artifacts = apply_rl_policy(
         agent=training_artifacts.agent,
         policy_inputs_df=example_df,
-        include_q_values=True,
+        include_q_values=False,
     )
+    logger.info(f"RL decisions head:\n{policy_artifacts.decisions_df.head()}")
 
     logger.info(f"RL decisions head:\n{policy_artifacts.decisions_df.head()}")
     if policy_artifacts.q_values_df is not None:

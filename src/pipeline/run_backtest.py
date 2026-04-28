@@ -28,17 +28,19 @@ from __future__ import annotations
 import pandas as pd
 
 from src.config.constants import (
+    DATE_COLUMN,
     DEFAULT_QUANTILES,
     DEFAULT_REFERENCE_STRATEGY,
+    MDP_D,
+    MDP_E_START,
+    MDP_E_UNIT,
     STRATEGY_RL_POLICY,
 )
 from src.config.paths import (
     BACKTESTS_DIR,
     FIGURES_DIR,
+    MODELING_DATASET_FILE,
     POLICIES_DIR,
-    TEST_FEATURES_FILE,
-    TRAIN_FEATURES_FILE,
-    VALIDATION_FEATURES_FILE,
 )
 from src.utils.logger import get_logger
 from src.models.quantile_models import train_quantile_models, summarize_quantile_results
@@ -46,6 +48,7 @@ from src.models.evaluate_model import build_quantile_diagnostics_report
 from src.decision.policy_inputs import prepare_policy_inputs
 from src.decision.heuristic_policy import apply_heuristic_policy
 from src.decision.rl_policy import apply_rl_policy
+from src.decision.rl_agent import QLearningAgentConfig
 from src.rl.train_rl_agent import train_q_learning_agent
 from src.backtesting.simulate_baseline import (
     BaselineSimulationConfig,
@@ -116,7 +119,7 @@ logger = get_logger(__name__)
 def _check_required_inputs() -> None:
     """Ensure required processed feature files exist before running."""
     logger.info("Checking required input files for backtest pipeline...")
-    required_files = [TRAIN_FEATURES_FILE, VALIDATION_FEATURES_FILE, TEST_FEATURES_FILE]
+    required_files = [MODELING_DATASET_FILE]
     missing_files = [str(file_path) for file_path in required_files if not file_path.exists()]
     if missing_files:
         raise BacktestPipelineError(
@@ -154,19 +157,30 @@ def run_backtest_pipeline() -> dict[str, pd.DataFrame]:
     # =========================
     # 1. Load datasets
     # =========================
-    # train_raw (2020–2023) + val_internal (2024) are combined so the quantile
-    # models see all pre-2025 data.  test (2025) is the true out-of-sample
-    # holdout used exclusively for backtesting.
-    train_raw = pd.read_csv(TRAIN_FEATURES_FILE)
-    val_internal = pd.read_csv(VALIDATION_FEATURES_FILE)
-    test = pd.read_csv(TEST_FEATURES_FILE)
+    # Load the FULL modeling dataset so rolling/lag features are computed on
+    # all available history.  Splitting AFTER feature engineering eliminates
+    # the data-leakage that caused 28 NaN lag rows at the start of 2025.
+    full_df = pd.read_csv(MODELING_DATASET_FILE)
+    full_df[DATE_COLUMN] = pd.to_datetime(full_df[DATE_COLUMN], errors="coerce")
 
-    train = pd.concat([train_raw, val_internal], ignore_index=True)
+    # Fill M3 OI-ratio NaNs (zero open interest → not a real missing signal)
+    m3_nan_cols = [
+        c for c in full_df.columns
+        if "m3" in c.lower() and full_df[c].isna().any()
+    ]
+    if m3_nan_cols:
+        full_df[m3_nan_cols] = full_df[m3_nan_cols].fillna(0.0)
 
-    logger.info(f"Loaded train features (2020–2023): {train_raw.shape}")
-    logger.info(f"Loaded validation features (2024): {val_internal.shape}")
+    train = full_df[full_df[DATE_COLUMN] <= pd.Timestamp("2024-12-31")].copy().reset_index(drop=True)
+    test  = full_df[full_df[DATE_COLUMN] >= pd.Timestamp("2025-01-01")].copy().reset_index(drop=True)
+
+    assert len(test) == 365, (
+        f"The 2025 test set must have exactly 365 days, got {len(test)}"
+    )
+
+    logger.info(f"Loaded full modeling dataset: {full_df.shape}")
     logger.info(f"Combined training set (2020–2024): {train.shape}")
-    logger.info(f"Loaded test features (2025 holdout): {test.shape}")
+    logger.info(f"Test set (2025 holdout): {test.shape} — 365 days confirmed")
 
     # =========================
     # 2. Train quantile models
@@ -203,7 +217,20 @@ def run_backtest_pipeline() -> dict[str, pd.DataFrame]:
     decisions_df = apply_heuristic_policy(policy_inputs_df)
     logger.info(f"Applied heuristic policy: {decisions_df.shape}")
 
-    rl_training_artifacts = train_q_learning_agent(policy_inputs_df)
+    # Restrict RL to hedging-only actions with P=D=1000 fixed (27 actions).
+    # Coupling production decisions corrupts energy-cost comparisons because
+    # the production profit term M*P dominates the reward signal.
+    _MDP_PROD_IDX_AT_D = MDP_D // 100   # = 10 for D=1000 in [0,100,...,2000]
+    _HEDGING_ACTIONS = tuple(range(_MDP_PROD_IDX_AT_D * 27, (_MDP_PROD_IDX_AT_D + 1) * 27))
+    _DEFAULT_HEDGE_ACTION = _MDP_PROD_IDX_AT_D * 27 + 18  # P=D, M1=1000, M2=0, M3=0
+
+    rl_training_artifacts = train_q_learning_agent(
+        policy_inputs_df,
+        agent_config=QLearningAgentConfig(
+            action_space=_HEDGING_ACTIONS,
+            default_action_id=_DEFAULT_HEDGE_ACTION,
+        ),
+    )
     logger.info(
         f"Trained RL agent with {len(rl_training_artifacts.agent.q_table)} learned states."
     )
@@ -233,12 +260,20 @@ def run_backtest_pipeline() -> dict[str, pd.DataFrame]:
     # =========================
     # 6. Simulate strategies (on 2025 test period)
     # =========================
-    spot_only_df = simulate_spot_only_baseline(test_aligned)
+    # All simulations use MDP-scale daily energy volume so results are
+    # comparable to the RL simulation (E_req = e_start + e_unit * D = 1020 MWh).
+    _MDP_DAILY_VOLUME = float(MDP_E_START + MDP_E_UNIT * MDP_D)  # 1020.0 MWh
+
+    spot_only_df = simulate_spot_only_baseline(
+        test_aligned,
+        config=BaselineSimulationConfig(default_daily_volume=_MDP_DAILY_VOLUME),
+    )
 
     static_hedge_df = simulate_static_hedge_baseline(
         test_aligned,
         config=BaselineSimulationConfig(
             hedge_ratio=0.7,
+            default_daily_volume=_MDP_DAILY_VOLUME,
         ),
     )
 
@@ -248,12 +283,18 @@ def run_backtest_pipeline() -> dict[str, pd.DataFrame]:
             hedge_ratio_on_buy_future=1.0,
             shift_fraction=1.0,
             shift_penalty_per_mwh=2.0,
+            default_daily_volume=_MDP_DAILY_VOLUME,
         ),
     )
 
     rl_policy_input_df = test_aligned.copy().reset_index(drop=True)
     rl_policy_input_df["recommended_action"] = rl_decisions_df["recommended_action"].values
-    rl_policy_input_df["action_source"] = STRATEGY_RL_POLICY
+    rl_policy_input_df["action_taken"]       = rl_decisions_df["recommended_action"].values
+    rl_policy_input_df["production_units"]   = rl_decisions_df["production_units"].values
+    rl_policy_input_df["m1_block_mwh"]       = rl_decisions_df["m1_block_mwh"].values
+    rl_policy_input_df["m2_block_mwh"]       = rl_decisions_df["m2_block_mwh"].values
+    rl_policy_input_df["m3_block_mwh"]       = rl_decisions_df["m3_block_mwh"].values
+    rl_policy_input_df["action_source"]      = STRATEGY_RL_POLICY
 
     rl_policy_sim_df = simulate_rl_policy_strategy(rl_policy_input_df)
 
@@ -375,12 +416,8 @@ def run_backtest_pipeline() -> dict[str, pd.DataFrame]:
         show=False,
     )
 
-    plot_action_timeline(
-        rl_policy_sim_df,
-        title="RL Policy Actions Over Time",
-        save_path=str(RL_ACTION_TIMELINE_FIGURE_FILE),
-        show=False,
-    )
+    # RL policy uses compound action labels not compatible with the 3-action
+    # heuristic timeline plot — skipped intentionally.
 
     logger.info(f"Saved policy decisions to {POLICY_DECISIONS_OUTPUT_FILE}")
     logger.info(f"Saved backtest tables to {BACKTESTS_DIR}")

@@ -1,48 +1,47 @@
 """
 rl_agent.py
 
-Lightweight reinforcement-learning agent abstractions for the energy
-procurement project. This module does not attempt to implement a full RL stack;
-instead, it provides clean agent interfaces and simple baseline agents that can
-interact with the custom environment defined in `rl_environment.py`.
+Tabular Q-learning agent for the factory procurement MDP.
+
+Action space: 567 compound actions encoding (P_{t+1}, b_m1, b_m2, b_m3).
+State key:    four binned signals — q90_vs_m1, spot_m1_spread,
+              q90_h3_vs_m1, inventory_bin.
 """
 
 from __future__ import annotations
 
+import random
 from dataclasses import dataclass
 from typing import Any
-import random
 
-from src.config.constants import (
-    ACTIONS,
-    ACTION_BUY_M1_FUTURE,
-    ACTION_DO_NOTHING,
-    ACTION_SHIFT_PRODUCTION,
-    validate_action_catalog,
-)
+from src.config.constants import MDP_N_ACTIONS
 from src.config.settings import RLSettings, get_default_settings
 from src.rl.rl_environment import EnergyRLEnvironment
+from src.rl.utils_rl import decode_compound_action
 
 
 class RLAgentError(Exception):
     """Raised when an RL agent cannot act or train safely."""
 
 
+# Full compound action space: integers 0 … 566
+_FULL_ACTION_SPACE: tuple[int, ...] = tuple(range(MDP_N_ACTIONS))
+
+
 @dataclass
 class RLAgentConfig:
-    """Configuration shared by lightweight RL agents."""
+    """Base configuration shared by all lightweight RL agents."""
 
-    action_space: tuple[int, ...] = (0, 1, 2)
+    action_space: tuple[int, ...] = _FULL_ACTION_SPACE
     random_seed: int = 42
-    epsilon: float = 0.1
-    learning_rate: float = 0.1
+    epsilon: float = 0.25
+    learning_rate: float = 0.10
     discount_factor: float = 0.95
 
     @classmethod
     def from_settings(cls, settings: RLSettings) -> "RLAgentConfig":
-        """Build an RL agent config from centralized project settings."""
         return cls(
-            action_space=(0, 1, 2),
+            action_space=_FULL_ACTION_SPACE,
             random_seed=42,
             epsilon=settings.epsilon,
             learning_rate=settings.learning_rate,
@@ -52,64 +51,45 @@ class RLAgentConfig:
 
 @dataclass
 class QLearningAgentConfig(RLAgentConfig):
-    """Configuration for the lightweight tabular Q-learning skeleton."""
+    """Configuration for the tabular Q-learning agent."""
 
-    epsilon_decay: float = 0.995
-    epsilon_min: float = 0.01
-    state_rounding_digits: int = 0
+    epsilon_decay: float = 0.999
+    epsilon_min: float = 0.05
+    state_bin_step: float = 5.0  # EUR/MWh bin width for continuous state signals
+    default_action_id: int = 288  # P=1000|M1=1000|M2=0|M3=0: sensible hedging default
 
     @classmethod
     def from_settings(cls, settings: RLSettings) -> "QLearningAgentConfig":
-        """Build a Q-learning config from centralized project settings."""
         return cls(
-            action_space=(0, 1, 2),
+            action_space=_FULL_ACTION_SPACE,
             random_seed=42,
             epsilon=settings.epsilon,
             learning_rate=settings.learning_rate,
             discount_factor=settings.discount_factor,
             epsilon_decay=settings.epsilon_decay,
             epsilon_min=settings.epsilon_min,
-            state_rounding_digits=settings.state_rounding_digits,
         )
 
 
 def get_default_rl_settings() -> RLSettings:
-    """Return default RL settings from the project configuration."""
     return get_default_settings().rl
 
 
-
-def _get_agent_config(config: RLAgentConfig | None) -> RLAgentConfig:
-    """Resolve an explicit RL agent config or build one from project settings."""
-    if config is not None:
-        return config
-    return RLAgentConfig.from_settings(get_default_rl_settings())
-
-
-
 def _validate_encoded_action(action: int, action_space: tuple[int, ...]) -> None:
-    """Validate that a chosen encoded action belongs to the configured action space."""
     if action not in action_space:
         raise RLAgentError(
-            f"Unsupported encoded action '{action}'. Expected one of: {list(action_space)}"
+            f"Unsupported encoded action {action!r}. Must be in [0, {MDP_N_ACTIONS})."
         )
 
 
 class BaseRLAgent:
-    """
-    Base interface for RL-style agents.
-
-    Child classes should at minimum implement `select_action(...)`. The default
-    `train(...)` method performs rollouts but does not update any policy.
-    """
+    """Base interface for RL-style agents."""
 
     def __init__(self, config: RLAgentConfig | None = None):
-        validate_action_catalog()
-        self.config = _get_agent_config(config)
+        self.config = config or RLAgentConfig.from_settings(get_default_rl_settings())
         self._rng = random.Random(self.config.random_seed)
 
     def select_action(self, state: dict[str, Any]) -> int:
-        """Select one action given the current environment state."""
         raise NotImplementedError("Child classes must implement select_action(...).")
 
     def observe(
@@ -120,11 +100,6 @@ class BaseRLAgent:
         next_state: dict[str, Any],
         done: bool,
     ) -> None:
-        """
-        Optional hook for online learning.
-
-        Stateless agents can ignore this method.
-        """
         return None
 
     def train(
@@ -132,14 +107,6 @@ class BaseRLAgent:
         env: EnergyRLEnvironment,
         episodes: int = 1,
     ) -> list[dict[str, float]]:
-        """
-        Run training rollouts against the environment.
-
-        Returns
-        -------
-        list[dict[str, float]]
-            One summary dictionary per episode.
-        """
         if episodes <= 0:
             raise RLAgentError("episodes must be strictly positive.")
 
@@ -173,174 +140,84 @@ class BaseRLAgent:
 
 
 class RandomAgent(BaseRLAgent):
-    """Simple baseline agent that samples actions uniformly at random."""
+    """Baseline agent that samples compound actions uniformly at random."""
 
     def select_action(self, state: dict[str, Any]) -> int:
-        if not self.config.action_space:
-            raise RLAgentError("Action space is empty.")
         return self._rng.choice(self.config.action_space)
-
-
-class HeuristicRLAgent(BaseRLAgent):
-    """
-    Simple rule-based agent for RL-environment benchmarking.
-
-    Policy:
-    - hedge when q90 is materially above futures
-    - shift when q90 is above q50 but hedge condition is not strong enough
-    - otherwise do nothing
-    """
-
-    def __init__(
-        self,
-        config: RLAgentConfig | None = None,
-        hedge_threshold: float | None = None,
-        shift_threshold: float | None = None,
-    ):
-        super().__init__(config=config)
-        rl_settings = get_default_rl_settings()
-        self.hedge_threshold = (
-            rl_settings.heuristic_hedge_threshold if hedge_threshold is None else hedge_threshold
-        )
-        self.shift_threshold = (
-            rl_settings.heuristic_shift_threshold if shift_threshold is None else shift_threshold
-        )
-
-    def select_action(self, state: dict[str, Any]) -> int:
-        required_keys = {"forecast_central", "forecast_tail", "current_m1_future"}
-        missing_keys = required_keys - set(state.keys())
-        if missing_keys:
-            raise RLAgentError(
-                f"State is missing required keys for HeuristicRLAgent: {sorted(missing_keys)}"
-            )
-
-        forecast_central = float(state["forecast_central"])
-        forecast_tail = float(state["forecast_tail"])
-        future_price = float(state["current_m1_future"])
-
-        tail_vs_future = float(
-            state.get("tail_vs_future_abs", forecast_tail - future_price)
-        )
-        tail_vs_central = float(
-            state.get("tail_vs_central_abs", forecast_tail - forecast_central)
-        )
-
-        if tail_vs_future >= self.hedge_threshold:
-            return 1
-        if tail_vs_central >= self.shift_threshold:
-            return 2
-        return 0
 
 
 class QLearningAgent(BaseRLAgent):
     """
-    Minimal tabular Q-learning skeleton.
+    Tabular Q-learning agent for the 567-action compound action space.
 
-    This implementation is intentionally lightweight and mainly serves as a
-    future-ready extension point for the project. It compresses the raw state
-    into a smaller set of decision-relevant signals and discretizes them into
-    coarse bins before storing Q-values in a Python dictionary.
+    State key: four binned signals
+      - q90_vs_m1      : forecast_tail - m1_price          (EUR/MWh, 5-EUR bins)
+      - spot_m1_spread : spot_price - m1_price             (EUR/MWh, 5-EUR bins)
+      - q90_h3_vs_m1   : forecast_tail_h3 - m1_price      (EUR/MWh, 5-EUR bins)
+      - inventory_bin  : 0=low / 1=mid / 2=high            (discrete)
     """
 
     def __init__(self, config: QLearningAgentConfig | None = None):
-        self.q_config = QLearningAgentConfig.from_settings(get_default_rl_settings()) if config is None else config
+        self.q_config = (
+            QLearningAgentConfig.from_settings(get_default_rl_settings())
+            if config is None
+            else config
+        )
         super().__init__(config=self.q_config)
         self.q_table: dict[tuple[tuple[str, float], ...], dict[int, float]] = {}
 
     def _state_to_key(self, state: dict[str, Any]) -> tuple[tuple[str, float], ...]:
-        """
-        Convert a raw environment state into a compact tabular-RL key.
-
-        We intentionally keep only the most decision-relevant signals:
-        - tail_vs_future_abs
-        - tail_vs_central_abs
-        - spot_minus_future
-        - is_weekend
-        - is_holiday
-
-        Continuous values are discretized into coarse bins so that similar days
-        map to the same tabular state more often.
-        """
+        """Map raw state dict to a compact, hashable tabular key."""
         if not state:
             return tuple()
 
-        def _to_float(key: str, value: Any) -> float:
+        def _f(key: str, default: float = 0.0) -> float:
             try:
-                return float(value)
+                return float(state.get(key, default))
             except (TypeError, ValueError) as exc:
                 raise RLAgentError(
-                    f"State value for key '{key}' is not numeric: {value}"
+                    f"State value for '{key}' is not numeric: {state.get(key)}"
                 ) from exc
 
-        def _bin_value(value: float, step: float) -> float:
+        def _bin(value: float) -> float:
+            step = self.q_config.state_bin_step
             return round(value / step) * step
 
-        forecast_central = _to_float("forecast_central", state.get("forecast_central", 0.0))
-        forecast_tail = _to_float("forecast_tail", state.get("forecast_tail", 0.0))
-        current_m1_future = _to_float("current_m1_future", state.get("current_m1_future", 0.0))
-        current_spot = _to_float("current_spot", state.get("current_spot", forecast_central))
+        m1_price = _f("m1_price")
+        forecast_tail = _f("forecast_tail")
+        forecast_tail_h3 = _f("forecast_tail_h3", forecast_tail)
+        spot_price = _f("spot_price", m1_price)
 
-        tail_vs_future_abs = _to_float(
-            "tail_vs_future_abs",
-            state.get("tail_vs_future_abs", forecast_tail - current_m1_future),
-        )
-        tail_vs_central_abs = _to_float(
-            "tail_vs_central_abs",
-            state.get("tail_vs_central_abs", forecast_tail - forecast_central),
-        )
-        spot_minus_future = current_spot - current_m1_future
-
-        is_weekend = 1.0 if _to_float("is_weekend", state.get("is_weekend", 0.0)) >= 0.5 else 0.0
-        is_holiday = 1.0 if _to_float("is_holiday", state.get("is_holiday", 0.0)) >= 0.5 else 0.0
-
-        compact_state = {
-            "tail_vs_future_abs": _bin_value(tail_vs_future_abs, 5.0),
-            "tail_vs_central_abs": _bin_value(tail_vs_central_abs, 5.0),
-            "spot_minus_future": _bin_value(spot_minus_future, 5.0),
-            "is_weekend": is_weekend,
-            "is_holiday": is_holiday,
+        compact = {
+            "q90_vs_m1": _bin(forecast_tail - m1_price),
+            "spot_m1_spread": _bin(spot_price - m1_price),
+            "q90_h3_vs_m1": _bin(forecast_tail_h3 - m1_price),
+            "inventory_bin": round(_f("inventory_bin")),
         }
+        return tuple(sorted(compact.items()))
 
-        # Horizon t+3 tail signal: how elevated is the t+3 tail forecast relative
-        # to the current futures price?  Only added when the environment exposes it,
-        # so the state key is backward-compatible when h3 data is absent.
-        if "forecast_tail_h3" in state and "current_m1_future" in state:
-            tail_h3_vs_future = _to_float(
-                "forecast_tail_h3", state["forecast_tail_h3"]
-            ) - current_m1_future
-            compact_state["tail_h3_vs_future_abs"] = _bin_value(tail_h3_vs_future, 5.0)
-
-        # Include inventory_bin when the factory MDP is active.
-        # Binned to {0, 1, 2} so tabular state space stays manageable.
-        if "inventory_bin" in state:
-            raw_bin = _to_float("inventory_bin", state["inventory_bin"])
-            compact_state["inventory_bin"] = float(round(raw_bin))
-
-        return tuple(sorted(compact_state.items()))
-
-    def _ensure_state(self, state_key: tuple[tuple[str, float], ...]) -> None:
-        if state_key not in self.q_table:
-            self.q_table[state_key] = {action: 0.0 for action in self.config.action_space}
+    def _ensure_state(self, key: tuple[tuple[str, float], ...]) -> None:
+        if key not in self.q_table:
+            self.q_table[key] = {a: 0.0 for a in self.config.action_space}
+            # Optimistic init: bias toward the sensible default hedge action so
+            # unvisited states don't default to the max-key action (566 = over-hedge).
+            default_id = self.q_config.default_action_id
+            if default_id in self.q_table[key]:
+                self.q_table[key][default_id] = 1e-4
 
     def get_action_values(self, state: dict[str, Any]) -> dict[int, float]:
-        """Return the current Q-values for a given state."""
-        state_key = self._state_to_key(state)
-        self._ensure_state(state_key)
-        return dict(self.q_table[state_key])
+        key = self._state_to_key(state)
+        self._ensure_state(key)
+        return dict(self.q_table[key])
 
     def select_action(self, state: dict[str, Any]) -> int:
-        state_key = self._state_to_key(state)
-        self._ensure_state(state_key)
+        key = self._state_to_key(state)
+        self._ensure_state(key)
 
         if self._rng.random() < self.q_config.epsilon:
-            action = self._rng.choice(self.config.action_space)
-            _validate_encoded_action(action, self.config.action_space)
-            return action
+            return self._rng.choice(self.config.action_space)
 
-        action_values = self.q_table[state_key]
-        best_action = int(max(action_values, key=action_values.get))
-        _validate_encoded_action(best_action, self.config.action_space)
-        return best_action
+        return int(max(self.q_table[key], key=self.q_table[key].get))
 
     def observe(
         self,
@@ -351,19 +228,18 @@ class QLearningAgent(BaseRLAgent):
         done: bool,
     ) -> None:
         _validate_encoded_action(action, self.config.action_space)
-        state_key = self._state_to_key(state)
-        next_state_key = self._state_to_key(next_state)
+        key = self._state_to_key(state)
+        next_key = self._state_to_key(next_state)
 
-        self._ensure_state(state_key)
-        self._ensure_state(next_state_key)
+        self._ensure_state(key)
+        self._ensure_state(next_key)
 
-        current_q = self.q_table[state_key][action]
-        next_q_max = 0.0 if done else max(self.q_table[next_state_key].values())
+        current_q = self.q_table[key][action]
+        next_q_max = 0.0 if done else max(self.q_table[next_key].values())
 
-        updated_q = current_q + self.q_config.learning_rate * (
+        self.q_table[key][action] = current_q + self.q_config.learning_rate * (
             reward + self.q_config.discount_factor * next_q_max - current_q
         )
-        self.q_table[state_key][action] = updated_q
 
         self.q_config.epsilon = max(
             self.q_config.epsilon_min,
@@ -383,33 +259,36 @@ def evaluate_agent(
 if __name__ == "__main__":
     import pandas as pd
 
-    from src.config.constants import PRIMARY_FUTURE_COLUMN, Q50_COLUMN, Q90_COLUMN
+    from src.config.constants import (
+        PRIMARY_FUTURE_COLUMN,
+        Q50_COLUMN,
+        Q50_H3_COLUMN,
+        Q90_COLUMN,
+        Q90_H3_COLUMN,
+        SECONDARY_FUTURE_COLUMN,
+    )
+    from src.rl.rl_environment import _M3_FUTURE_COLUMN
 
     example_df = pd.DataFrame(
         {
-            Q50_COLUMN: [50, 55, 60, 58],
-            Q90_COLUMN: [60, 68, 78, 66],
-            PRIMARY_FUTURE_COLUMN: [52, 57, 63, 60],
-            "Spot_Price_SPEL": [51, 58, 66, 61],
-            "tail_vs_future_abs": [8, 11, 15, 6],
-            "tail_vs_central_abs": [10, 13, 18, 8],
-            "is_weekend": [0, 0, 1, 0],
-            "Is_national_holiday": [0, 0, 0, 0],
+            Q50_COLUMN: [50.0, 55.0, 60.0, 58.0],
+            Q90_COLUMN: [60.0, 68.0, 78.0, 66.0],
+            Q50_H3_COLUMN: [52.0, 57.0, 62.0, 59.0],
+            Q90_H3_COLUMN: [65.0, 73.0, 83.0, 71.0],
+            PRIMARY_FUTURE_COLUMN: [52.0, 57.0, 63.0, 60.0],
+            "Spot_Price_SPEL": [51.0, 58.0, 66.0, 61.0],
+            SECONDARY_FUTURE_COLUMN: [53.0, 58.0, 64.0, 61.0],
+            _M3_FUTURE_COLUMN: [54.0, 59.0, 65.0, 62.0],
         }
     )
 
     env = EnergyRLEnvironment(example_df)
-    assert len(ACTIONS) >= 3
 
     print("=== RANDOM AGENT ===")
     random_agent = RandomAgent()
     print(evaluate_agent(random_agent, env, episodes=2))
 
-    print("\n=== HEURISTIC RL AGENT ===")
-    heuristic_agent = HeuristicRLAgent()
-    print(evaluate_agent(heuristic_agent, env, episodes=2))
-
-    print("\n=== Q-LEARNING AGENT (SKELETON) ===")
+    print("\n=== Q-LEARNING AGENT ===")
     q_agent = QLearningAgent()
     print(evaluate_agent(q_agent, env, episodes=2))
-    print("Q-table size:", len(q_agent.q_table))
+    print("Q-table states:", len(q_agent.q_table))
