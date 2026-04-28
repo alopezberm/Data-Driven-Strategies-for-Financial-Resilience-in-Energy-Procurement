@@ -125,13 +125,13 @@ MDP_INITIAL_INVENTORY = 1500  # Starting inventory at episode reset (midpoint of
 MDP_PROD_LEVELS: list[int] = list(range(0, MDP_P_MAX + 1, 100))
 MDP_PROD_STEP = 100
 
-# Futures block sizes (MWh): 0, 500, or 1000 MWh per tenor (M1, M2, M3)
-MDP_BLOCK_SIZES: list[int] = [0, 500, 1000]
+# Futures block sizes (MWh): 0 or 500 MWh per tenor (50% cap — prevents over-hedging)
+MDP_BLOCK_SIZES: list[int] = [0, 500]
 
 # Derived action-space dimensions (kept as constants for reuse across modules)
 MDP_N_PROD = 21               # len(range(0, 2001, 100))
-MDP_N_BLOCK = 3               # len([0, 500, 1000])
-MDP_N_ACTIONS = 567           # MDP_N_PROD * MDP_N_BLOCK**3
+MDP_N_BLOCK = 2               # len([0, 500])
+MDP_N_ACTIONS = 168           # MDP_N_PROD * MDP_N_BLOCK**3  (21 * 8)
 
 # Spot-M1 spread column — required by the RL state space
 SPOT_M1_SPREAD_COLUMN = "Spot_M1_Spread"

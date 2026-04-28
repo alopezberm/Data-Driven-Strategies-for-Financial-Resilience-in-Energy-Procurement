@@ -217,18 +217,13 @@ def run_backtest_pipeline() -> dict[str, pd.DataFrame]:
     decisions_df = apply_heuristic_policy(policy_inputs_df)
     logger.info(f"Applied heuristic policy: {decisions_df.shape}")
 
-    # Restrict RL to hedging-only actions with P=D=1000 fixed (27 actions).
-    # Coupling production decisions corrupts energy-cost comparisons because
-    # the production profit term M*P dominates the reward signal.
-    _MDP_PROD_IDX_AT_D = MDP_D // 100   # = 10 for D=1000 in [0,100,...,2000]
-    _HEDGING_ACTIONS = tuple(range(_MDP_PROD_IDX_AT_D * 27, (_MDP_PROD_IDX_AT_D + 1) * 27))
-    _DEFAULT_HEDGE_ACTION = _MDP_PROD_IDX_AT_D * 27 + 18  # P=D, M1=1000, M2=0, M3=0
-
+    # Full 168-action space: production ∈ {0,100,...,2000} × hedges ∈ {0,500}³
+    # Temporal decoupling and 50% hedge cap force the agent to use production
+    # shifting as the primary short-term spot-price defence.
     rl_training_artifacts = train_q_learning_agent(
         policy_inputs_df,
         agent_config=QLearningAgentConfig(
-            action_space=_HEDGING_ACTIONS,
-            default_action_id=_DEFAULT_HEDGE_ACTION,
+            default_action_id=84,  # P=1000|M1=500|M2=0|M3=0 (10*8 + 1*4)
         ),
     )
     logger.info(
@@ -242,6 +237,16 @@ def run_backtest_pipeline() -> dict[str, pd.DataFrame]:
     )
     rl_decisions_df = rl_policy_artifacts.decisions_df.copy()
     logger.info(f"Applied RL policy: {rl_decisions_df.shape}")
+
+    # Sanity checks: verify 50% hedge cap and production shifting are active
+    assert max(rl_decisions_df["m1_block_mwh"]) <= 500, (
+        "Max daily M1 hedge must be ≤ 500 MWh (50% cap violated)"
+    )
+    assert len(rl_decisions_df[rl_decisions_df["production_units"] != 1000]) > 10, (
+        "Agent must use production shifting (P != 1000) on at least 10 days"
+    )
+    n_shifted = len(rl_decisions_df[rl_decisions_df["production_units"] != 1000])
+    logger.info(f"Production shifting days (P != D=1000): {n_shifted}/365")
 
     # =========================
     # 5. Align test subset

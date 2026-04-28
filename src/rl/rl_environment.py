@@ -12,20 +12,26 @@ MDP Parameters (Single Source of Truth — from Mathematical Formulation):
   h       = 5 EUR/unit/day   inventory holding cost
   M       = 200 EUR/unit     gross profit margin
 
-Action Space (Joint Compound, Discrete — 567 total):
+Action Space (Joint Compound, Discrete — 168 total):
   P_{t+1}  ∈ {0, 100, 200, ..., 2000}   21 production levels
-  b_m1     ∈ {0, 500, 1000} MWh          3 M1 block sizes
-  b_m2     ∈ {0, 500, 1000} MWh          3 M2 block sizes
-  b_m3     ∈ {0, 500, 1000} MWh          3 M3 block sizes
-  Encoding: action_id = prod_idx * 27 + m1_idx * 9 + m2_idx * 3 + m3_idx
+  b_m1     ∈ {0, 500} MWh               2 M1 block sizes (50% cap)
+  b_m2     ∈ {0, 500} MWh               2 M2 block sizes (50% cap)
+  b_m3     ∈ {0, 500} MWh               2 M3 block sizes (50% cap)
+  Encoding: action_id = prod_idx * 8 + m1_idx * 4 + m2_idx * 2 + m3_idx
 
-Reward Formula (Take-or-Pay):
+Temporal Decoupling:
+  Futures purchased on day t build a carry position that covers spot on day t+1.
+  Today's spot deficit is settled against yesterday's carry (self.futures_carry).
+  self.futures_carry is updated after each step: leftover + new buys, capped at 1500.
+
+Reward Formula (Temporal Decoupling):
   E_t         = e_start + e_unit * P_{t+1}   if P_{t+1} > 0, else 0
-  hedge_pay   = b_m1 * p_M1 + b_m2 * p_M2 + b_m3 * p_M3
-  deficit     = max(0, E_t - b_m1 - b_m2 - b_m3)
-  spot_pay    = deficit * spot_price
+  used        = min(futures_carry_t, E_t)      (energy drawn from yesterday's carry)
+  spot_pay    = max(0, E_t - futures_carry_t) * spot_price
+  hedge_pay   = b_m1 * p_M1 + b_m2 * p_M2 + b_m3 * p_M3  (cost of NEW purchases)
   I_{t+1}     = clip(I_t + P_{t+1} - D, 0, I_max)
   R_t         = M * P_{t+1} - h * I_{t+1} - hedge_pay - spot_pay
+  futures_carry_{t+1} = min(1500, max(0, futures_carry_t - used) + b_m1 + b_m2 + b_m3)
 
 Required State Columns:
   q_0.5, q_0.9              (t+2 central / tail forecast)
@@ -99,7 +105,7 @@ class EnergyRLEnvironment:
     Step-based factory procurement environment.
 
     State  : market forecasts + Spot-M1 spread + inventory level
-    Action : integer in [0, 567) encoding (P_{t+1}, b_m1, b_m2, b_m3)
+    Action : integer in [0, 168) encoding (P_{t+1}, b_m1, b_m2, b_m3)
     Reward : R_t = M*P - h*I_{t+1} - hedge_payment - spot_deficit_payment
     """
 
@@ -113,6 +119,7 @@ class EnergyRLEnvironment:
         self.current_step: int = 0
         self.done: bool = False
         self.inventory: float = float(self.config.initial_inventory)
+        self.futures_carry: float = 0.0
 
     # ------------------------------------------------------------------
     # Validation
@@ -169,6 +176,7 @@ class EnergyRLEnvironment:
         self.current_step = 0
         self.done = False
         self.inventory = float(self.config.initial_inventory)
+        self.futures_carry = 0.0
         return self._get_state()
 
     def step(
@@ -224,6 +232,7 @@ class EnergyRLEnvironment:
             "spot_m1_spread": float(row[c.spot_m1_spread_column]),
             "inventory": float(self.inventory),
             "inventory_bin": float(self._inventory_bin()),
+            "futures_bin": float(self._futures_bin()),
         }
 
     def _inventory_bin(self) -> int:
@@ -232,6 +241,14 @@ class EnergyRLEnvironment:
         if ratio < 0.33:
             return 0
         if ratio < 0.67:
+            return 1
+        return 2
+
+    def _futures_bin(self) -> int:
+        """Discretize futures carry into three bins: 0=<300, 1=300-800, 2=>800 MWh."""
+        if self.futures_carry < 300:
+            return 0
+        if self.futures_carry < 800:
             return 1
         return 2
 
@@ -247,12 +264,16 @@ class EnergyRLEnvironment:
         b_m3: int,
     ) -> float:
         """
+        Temporal-decoupling reward: today's spot is settled against YESTERDAY's carry.
+        Today's new futures purchases (b_m1, b_m2, b_m3) protect TOMORROW's spot.
+
         R_t = M * P_{t+1} - h * I_{t+1} - hedge_payment - spot_payment
 
-        hedge_payment = b_m1*p_M1 + b_m2*p_M2 + b_m3*p_M3  (Fixed Hedge Payment)
-        spot_payment  = max(0, E_t - total_hedged) * spot    (Spot deficit)
+        spot_payment  = max(0, E_t - futures_carry_t) * spot   (yesterday's carry)
+        hedge_payment = b_m1*p_M1 + b_m2*p_M2 + b_m3*p_M3     (cost of new buys)
         E_t           = e_start + e_unit * P  if P > 0  else 0
         I_{t+1}       = clip(I_t + P - D, 0, I_max)
+        futures_carry_{t+1} = min(1500, max(0, carry - used) + b_m1 + b_m2 + b_m3)
         """
         row = self.df.iloc[self.current_step]
         c = self.config
@@ -273,16 +294,21 @@ class EnergyRLEnvironment:
         # Energy required this step
         e_req = (MDP_E_START + MDP_E_UNIT * prod) if prod > 0 else 0.0
 
-        # Fixed Hedge Payment
-        hedge_payment = b_m1 * m1_price + b_m2 * m2_price + b_m3 * m3_price
+        # Spot payment: only energy NOT covered by yesterday's carry hits spot market
+        spot_payment = max(0.0, e_req - self.futures_carry) * spot_price
 
-        # Spot Payment for any energy deficit not covered by futures blocks
-        total_hedged = float(b_m1 + b_m2 + b_m3)
-        deficit = max(0.0, e_req - total_hedged)
-        spot_payment = deficit * spot_price
+        # Cost of TODAY's new futures purchases (benefit comes tomorrow)
+        hedge_payment = b_m1 * m1_price + b_m2 * m2_price + b_m3 * m3_price
 
         # Next-step inventory (used for holding cost)
         i_next = max(0.0, min(float(MDP_I_MAX), self.inventory + prod - MDP_D))
+
+        # Update carry for tomorrow: leftover from today + new purchases, capped at 1500
+        used = min(self.futures_carry, e_req)
+        self.futures_carry = min(
+            1500.0,
+            max(0.0, self.futures_carry - used) + float(b_m1 + b_m2 + b_m3),
+        )
 
         return float(MDP_M * prod - MDP_H * i_next - hedge_payment - spot_payment)
 
@@ -325,7 +351,7 @@ if __name__ == "__main__":
     done = False
     step = 0
     while not done:
-        action = 10 * 27 + 1 * 9 + 0 * 3 + 0  # P=1000, M1=500, M2=0, M3=0
+        action = 10 * 8 + 1 * 4 + 0 * 2 + 0  # P=1000, M1=500, M2=0, M3=0 = 84
         next_state, reward, done, info = env.step(action)
         print(f"Step {step}: reward={reward:.2f}, info={info}")
         step += 1

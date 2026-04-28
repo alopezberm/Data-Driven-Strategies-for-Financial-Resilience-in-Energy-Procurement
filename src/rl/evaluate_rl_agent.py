@@ -20,7 +20,7 @@ from typing import Any
 
 import pandas as pd
 
-from src.config.constants import DATE_COLUMN
+from src.config.constants import DATE_COLUMN, MDP_E_START, MDP_E_UNIT
 from src.decision.rl_agent import QLearningAgent, RLAgentError
 from src.rl.rl_environment import RLEnvironmentConfig
 from src.rl.utils_rl import RLUtilsError, compound_action_label, decode_compound_action
@@ -119,10 +119,19 @@ def evaluate_trained_rl_agent(
     state_action_rows: list[dict[str, Any]] = []
 
     c = env_config or RLEnvironmentConfig()
+    futures_carry: float = 0.0
 
     for idx, (_, row) in enumerate(evaluation_df.iterrows()):
         m1_price = float(row[c.future_m1_column]) if c.future_m1_column in row.index else 0.0
         spot_price = float(row[c.spot_column]) if c.spot_column in row.index else m1_price
+
+        # Discretize carry into three bins matching rl_environment._futures_bin()
+        if futures_carry < 300:
+            futures_bin = 0.0
+        elif futures_carry < 800:
+            futures_bin = 1.0
+        else:
+            futures_bin = 2.0
 
         state: dict[str, Any] = {
             "forecast_central": float(row[c.q50_column]) if c.q50_column in row.index else 0.0,
@@ -138,6 +147,7 @@ def evaluate_trained_rl_agent(
             ),
             "inventory": float(c.initial_inventory),
             "inventory_bin": 1.0,
+            "futures_bin": futures_bin,
         }
 
         try:
@@ -146,6 +156,11 @@ def evaluate_trained_rl_agent(
             action_label = compound_action_label(action_id)
         except (RLAgentError, RLUtilsError, KeyError, ValueError, TypeError) as exc:
             raise RLEvaluationError(f"Failed to evaluate RL action on row {idx}: {exc}") from exc
+
+        # Update futures carry for next step (mirrors rl_environment._compute_reward)
+        e_req = (MDP_E_START + MDP_E_UNIT * prod) if prod > 0 else 0.0
+        used = min(futures_carry, e_req)
+        futures_carry = min(1500.0, max(0.0, futures_carry - used) + float(m1 + m2 + m3))
 
         decision_row: dict[str, Any] = {
             "row_id": idx,

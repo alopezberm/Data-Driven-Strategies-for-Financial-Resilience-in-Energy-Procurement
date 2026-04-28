@@ -31,6 +31,7 @@ from src.config.constants import (
     ACTION_SHIFT_PRODUCTION,
     MDP_BLOCK_SIZES,
     MDP_N_ACTIONS,
+    MDP_N_BLOCK,
     MDP_PROD_LEVELS,
 )
 from src.utils.logger import get_logger
@@ -49,10 +50,12 @@ class RLUtilsError(Exception):
 #
 # Each action_id encodes a tuple (production_units, m1_mwh, m2_mwh, m3_mwh):
 #   production_units ∈ {0, 100, ..., 2000}   →  21 values (index 0-20)
-#   m1_mwh / m2_mwh / m3_mwh ∈ {0, 500, 1000} →  3 values each (index 0-2)
+#   m1_mwh / m2_mwh / m3_mwh ∈ {0, 500}     →  2 values each (50% hedge cap)
 #
-# Encoding:  action_id = prod_idx * 27 + m1_idx * 9 + m2_idx * 3 + m3_idx
-# Total:     21 * 3^3 = 567 actions  (MDP_N_ACTIONS)
+# Encoding:  action_id = prod_idx * 8 + m1_idx * 4 + m2_idx * 2 + m3_idx
+# Total:     21 * 2^3 = 168 actions  (MDP_N_ACTIONS)
+
+_N_HEDGE = MDP_N_BLOCK ** 3   # 8
 
 
 def encode_compound_action(
@@ -61,7 +64,7 @@ def encode_compound_action(
     m2_mwh: int,
     m3_mwh: int,
 ) -> int:
-    """Encode (production_units, m1_mwh, m2_mwh, m3_mwh) → action_id in [0, 567)."""
+    """Encode (production_units, m1_mwh, m2_mwh, m3_mwh) → action_id in [0, 168)."""
     try:
         pi = MDP_PROD_LEVELS.index(prod_units)
         b1 = MDP_BLOCK_SIZES.index(m1_mwh)
@@ -72,21 +75,21 @@ def encode_compound_action(
             f"Invalid compound action components: prod={prod_units}, "
             f"m1={m1_mwh}, m2={m2_mwh}, m3={m3_mwh}. {exc}"
         ) from exc
-    return pi * 27 + b1 * 9 + b2 * 3 + b3
+    return pi * _N_HEDGE + b1 * 4 + b2 * 2 + b3
 
 
 def decode_compound_action(action_id: int) -> tuple[int, int, int, int]:
-    """Decode action_id in [0, 567) → (production_units, m1_mwh, m2_mwh, m3_mwh)."""
+    """Decode action_id in [0, 168) → (production_units, m1_mwh, m2_mwh, m3_mwh)."""
     if not (0 <= action_id < MDP_N_ACTIONS):
         raise RLUtilsError(
             f"action_id {action_id} is out of range [0, {MDP_N_ACTIONS})."
         )
-    pi = action_id // 27
-    rem = action_id % 27
-    b1 = rem // 9
-    rem = rem % 9
-    b2 = rem // 3
-    b3 = rem % 3
+    pi = action_id // _N_HEDGE
+    rem = action_id % _N_HEDGE
+    b1 = rem // 4
+    rem = rem % 4
+    b2 = rem // 2
+    b3 = rem % 2
     return (MDP_PROD_LEVELS[pi], MDP_BLOCK_SIZES[b1], MDP_BLOCK_SIZES[b2], MDP_BLOCK_SIZES[b3])
 
 

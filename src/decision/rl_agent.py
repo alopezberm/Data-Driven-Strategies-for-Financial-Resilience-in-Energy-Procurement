@@ -3,9 +3,10 @@ rl_agent.py
 
 Tabular Q-learning agent for the factory procurement MDP.
 
-Action space: 567 compound actions encoding (P_{t+1}, b_m1, b_m2, b_m3).
-State key:    four binned signals — q90_vs_m1, spot_m1_spread,
-              q90_h3_vs_m1, inventory_bin.
+Action space: 168 compound actions encoding (P_{t+1}, b_m1, b_m2, b_m3).
+              Blocks are capped at 500 MWh per tenor (50% hedge limit).
+State key:    five binned signals — q90_vs_m1, spot_m1_spread,
+              q90_h3_vs_m1, inventory_bin, futures_bin.
 """
 
 from __future__ import annotations
@@ -24,7 +25,7 @@ class RLAgentError(Exception):
     """Raised when an RL agent cannot act or train safely."""
 
 
-# Full compound action space: integers 0 … 566
+# Full compound action space: integers 0 … 167
 _FULL_ACTION_SPACE: tuple[int, ...] = tuple(range(MDP_N_ACTIONS))
 
 
@@ -56,7 +57,7 @@ class QLearningAgentConfig(RLAgentConfig):
     epsilon_decay: float = 0.999
     epsilon_min: float = 0.05
     state_bin_step: float = 5.0  # EUR/MWh bin width for continuous state signals
-    default_action_id: int = 288  # P=1000|M1=1000|M2=0|M3=0: sensible hedging default
+    default_action_id: int = 84  # P=1000|M1=500|M2=0|M3=0 in 168-action encoding (10*8+1*4)
 
     @classmethod
     def from_settings(cls, settings: RLSettings) -> "QLearningAgentConfig":
@@ -148,13 +149,14 @@ class RandomAgent(BaseRLAgent):
 
 class QLearningAgent(BaseRLAgent):
     """
-    Tabular Q-learning agent for the 567-action compound action space.
+    Tabular Q-learning agent for the 168-action compound action space.
 
-    State key: four binned signals
+    State key: five binned signals
       - q90_vs_m1      : forecast_tail - m1_price          (EUR/MWh, 5-EUR bins)
       - spot_m1_spread : spot_price - m1_price             (EUR/MWh, 5-EUR bins)
       - q90_h3_vs_m1   : forecast_tail_h3 - m1_price      (EUR/MWh, 5-EUR bins)
       - inventory_bin  : 0=low / 1=mid / 2=high            (discrete)
+      - futures_bin    : 0=<300 / 1=300-800 / 2=>800 MWh  (discrete)
     """
 
     def __init__(self, config: QLearningAgentConfig | None = None):
@@ -193,6 +195,7 @@ class QLearningAgent(BaseRLAgent):
             "spot_m1_spread": _bin(spot_price - m1_price),
             "q90_h3_vs_m1": _bin(forecast_tail_h3 - m1_price),
             "inventory_bin": round(_f("inventory_bin")),
+            "futures_bin": round(_f("futures_bin")),
         }
         return tuple(sorted(compact.items()))
 
