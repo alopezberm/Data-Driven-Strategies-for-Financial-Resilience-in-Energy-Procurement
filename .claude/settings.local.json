@@ -5,7 +5,11 @@
       "Bash(c:UsersAlejandroGitHubData-Driven-Strategies-for-Financial-Resilience-in-Energy-Procurement.venvScriptspython.exe -c ' *)",
       "Bash(.venv/Scripts/python.exe -c ' *)",
       "Bash(ls .venv/Scripts/python*)",
-      "Bash(ls .venv/bin/python*)"
+      "Bash(ls .venv/bin/python*)",
+      "Bash(py -m jupyter nbconvert --to notebook --execute --inplace --ExecutePreprocessor.kernel_name=business312 --ExecutePreprocessor.timeout=1800 notebooks/08_reporting/01_technical_report.ipynb)",
+      "Bash(C:\\\\Users\\\\Alejandro\\\\AppData\\\\Local\\\\Programs\\\\Python\\\\Python312\\\\python.exe -c \"import plotly; print\\('plotly OK:', plotly.__version__\\)\")",
+      "Bash(py -c \"import plotly; print\\('sys py plotly OK:', plotly.__version__\\)\")",
+      "Bash(py -c ' *)"
     ]
   }
 }
