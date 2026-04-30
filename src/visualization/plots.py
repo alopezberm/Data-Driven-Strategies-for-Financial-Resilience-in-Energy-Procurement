@@ -443,6 +443,13 @@ def plot_naive_baseline_2025(
         year_df[DATE_COLUMN], daily_cost, alpha=0.25, color="crimson"
     )
     axes[0].plot(year_df[DATE_COLUMN], daily_cost, lw=1.1, color="crimson")
+    axes[0].axhline(
+        avg_daily,
+        color="black",
+        ls="--",
+        lw=1.2,
+        label=f"Average Daily Cost: €{avg_daily:,.0f}",
+    )
     axes[0].set_title(
         f"Daily Energy Cost — Naive Spot Baseline 2025  "
         f"(E_req = {e_req:,.0f} MWh/day = e_start + e_unit×D)",
@@ -450,6 +457,7 @@ def plot_naive_baseline_2025(
     )
     axes[0].set_ylabel("Daily Cost (€)")
     axes[0].yaxis.set_major_formatter(_EUR_FMT)
+    axes[0].legend(loc="upper right", fontsize=9)
 
     # Bottom: cumulative cost
     axes[1].plot(
@@ -457,7 +465,14 @@ def plot_naive_baseline_2025(
         cumulative,
         lw=2.4,
         color="crimson",
-        label=f"Cumulative naive cost  (total: €{total_cost:,.0f})",
+        label=f"Cumulative Spot Cost (Total: €{total_cost:,.0f})",
+    )
+    axes[1].plot(
+        year_df[DATE_COLUMN],
+        (year_df.index + 1) * avg_daily,
+        "k--",
+        lw=1.2,
+        label="Average Cost Accumulation",
     )
     axes[1].fill_between(
         year_df[DATE_COLUMN], cumulative, alpha=0.08, color="crimson"
