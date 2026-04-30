@@ -952,7 +952,7 @@ def plot_exec_summary_resilience_overlay(
     save_path: str | Path | None = None,
     show: bool = False,
     hedge_action_column: str = "action_heuristic_policy",
-    hedge_action_value: str = "buy_m1_future",
+    hedge_action_value: str | Sequence[str] = "buy_m1_future",
 ) -> None:
     """
     "The Protection Map" — C-Level resilience time series.
@@ -974,8 +974,12 @@ def plot_exec_summary_resilience_overlay(
         Display interactively (default False — export mode).
     hedge_action_column : str
         Column indicating which action the DSS took each day.
-    hedge_action_value : str
-        Value in *hedge_action_column* that means "forward contract active".
+    hedge_action_value : str or sequence of str
+        Value or values in *hedge_action_column* that indicate a forward
+        contract being active. If multiple values are provided (e.g.
+        ``["buy_m1_future", "do_nothing"]``), each will be plotted with
+        a distinct color (first = green, second = red) and the legend will
+        show the variable names.
     """
     required = ["date", SPOT_PRICE_COLUMN, hedge_action_column]
     missing = [c for c in required if c not in df_simulation.columns]
@@ -987,53 +991,73 @@ def plot_exec_summary_resilience_overlay(
     df = df.dropna(subset=["date"]).sort_values("date").reset_index(drop=True)
     df[SPOT_PRICE_COLUMN] = pd.to_numeric(df[SPOT_PRICE_COLUMN], errors="coerce")
 
-    is_hedged = (df[hedge_action_column] == hedge_action_value).values
+    # Normalize hedge_action_value to a list of strings
+    if isinstance(hedge_action_value, (str,)):
+        actions = [hedge_action_value]
+    else:
+        actions = list(hedge_action_value)
+
     dates = df["date"].values
     prices = df[SPOT_PRICE_COLUMN].values
 
-    # Build contiguous hedged spans for axvspan
-    hedged_spans: list[tuple] = []
-    for hedged, group in groupby(enumerate(is_hedged), key=itemgetter(1)):
-        indices = [g[0] for g in group]
-        if hedged:
-            hedged_spans.append((dates[indices[0]], dates[indices[-1]]))
+    # Colors: first -> green, second -> red, others use palette
+    action_colors = ["#2e7d32", "#f3ecec"] + _PALETTE_ACTIONS
 
-    n_hedged = int(is_hedged.sum())
-    n_total = len(df)
-    coverage_pct = n_hedged / n_total * 100.0 if n_total > 0 else 0.0
+    # Build spans and stats per action
+    action_spans: dict[str, list[tuple]] = {}
+    action_stats: dict[str, tuple[int, float]] = {}
+    for i, action in enumerate(actions):
+        mask = (df[hedge_action_column] == action).values
+        spans: list[tuple] = []
+        for hedged, group in groupby(enumerate(mask), key=itemgetter(1)):
+            indices = [g[0] for g in group]
+            if hedged:
+                spans.append((dates[indices[0]], dates[indices[-1]]))
+        action_spans[action] = spans
+        n_act = int(mask.sum())
+        n_total = len(df)
+        pct = n_act / n_total * 100.0 if n_total > 0 else 0.0
+        action_stats[action] = (n_act, pct)
+
     p90_price = float(pd.Series(prices).quantile(0.90))
 
     with plt.rc_context(_EXEC_RC):
         fig, ax = plt.subplots(figsize=(13, 5.5))
         fig.patch.set_facecolor("white")
 
-        # Green protection zones (drawn first, behind everything)
-        for span_start, span_end in hedged_spans:
-            ax.axvspan(span_start, span_end, alpha=0.18, color="#2e7d32", linewidth=0, zorder=1)
+        # Draw protection spans for each requested action (behind the line)
+        for i, action in enumerate(actions):
+            color = action_colors[i]
+            for span_start, span_end in action_spans.get(action, []):
+                ax.axvspan(span_start, span_end, alpha=0.18, color=color, linewidth=0, zorder=1)
 
-        # P90 danger reference line
+        # P90 danger reference line (use distinct color)
         ax.axhline(
-            p90_price, color="#c62828", ls="--", lw=1.2, alpha=0.6, zorder=2,
+            p90_price, color="#880000", ls="--", lw=1.2, alpha=0.6, zorder=2,
             label=f"P90 spike threshold  (€{p90_price:.0f}/MWh)",
         )
 
         # Spot price line
         ax.plot(df["date"], prices, color="#1a237e", lw=1.6, zorder=3, alpha=0.9)
 
-        # Legend: green patch only (keep it simple)
-        green_patch = mpatches.Patch(
-            color="#2e7d32", alpha=0.4,
-            label=f"Forward Contract Active  ({n_hedged}/{n_total} days · {coverage_pct:.0f}% coverage)",
-        )
-        ax.legend(handles=[green_patch], loc="upper right", fontsize=10, frameon=False)
-
-        # "PROTECTED" text on the longest hedged span
-        if hedged_spans:
-            longest_idx = max(
-                range(len(hedged_spans)),
-                key=lambda i: hedged_spans[i][1] - hedged_spans[i][0],
+        # Legend: one patch per action requested
+        patches = []
+        for i, action in enumerate(actions):
+            n_act, pct = action_stats[action]
+            patch = mpatches.Patch(
+                color=action_colors[i], alpha=0.4,
+                label=f"{action}  ({n_act}/{n_total} days · {pct:.0f}% coverage)",
             )
-            ann_start, ann_end = hedged_spans[longest_idx]
+            patches.append(patch)
+        # Add the p90 line handle too
+        patches.insert(0, mpatches.Patch(color="#880000", alpha=0.4, label=f"P90 spike threshold  (€{p90_price:.0f}/MWh)"))
+        ax.legend(handles=patches, loc="upper right", fontsize=10, frameon=False)
+
+        # "PROTECTED" annotation: use the longest hedged span across all actions
+        all_spans = [s for spans in action_spans.values() for s in spans]
+        if all_spans:
+            longest_idx = max(range(len(all_spans)), key=lambda i: all_spans[i][1] - all_spans[i][0])
+            ann_start, ann_end = all_spans[longest_idx]
             ann_date = ann_start + (ann_end - ann_start) / 2
             ann_price = float(pd.Series(prices).quantile(0.60))
             ax.text(
