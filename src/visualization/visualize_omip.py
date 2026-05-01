@@ -100,7 +100,7 @@ def plot_liquidity_sparsity(df_raw):
         plt.tight_layout()
         plt.show()
         
-        print("\n📊 Liquidity Audit Table:")
+        print("\nLiquidity Audit Table:")
         display(audit_df)
 
 def plot_anticipation_variance(df_raw):

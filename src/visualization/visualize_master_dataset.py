@@ -72,7 +72,7 @@ def plot_cointegration_and_oscillator(df_master: pd.DataFrame, zoom_start='2021-
     plt.show()
 
     correlation = df_master['Spot_Price_SPEL'].corr(df_master['Future_M1_Price'])
-    print(f"📊 Validated Pearson Correlation (Spot vs. M1 Future): {correlation:.3f}")
+    print(f"Validated Pearson Correlation (Spot vs. M1 Future): {correlation:.3f}")
 
 def plot_wind_impact(df):
     """
@@ -127,7 +127,7 @@ def plot_temperature_ucurve(df):
     plt.show()
     
     corr_temp = df['Spot_Price_SPEL'].corr(df['temperature_2m_mean'])
-    print(f"📊 Validated Pearson Correlation (Spot vs. Temperature): {corr_temp:.3f}")
+    print(f"Validated Pearson Correlation (Spot vs. Temperature): {corr_temp:.3f}")
 
 
 def plot_state_space_heatmap(df):
