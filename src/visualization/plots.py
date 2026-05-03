@@ -497,7 +497,7 @@ def plot_naive_baseline_2025(
     return {"total_cost": total_cost, "avg_daily_cost": avg_daily, "e_req_mwh": e_req}
 
 
-def plot_savings_bar_chart(
+def plot_savings_bar_chart1(
     all_sims: Sequence[pd.DataFrame],
     reference_strategy: str = STRATEGY_SPOT_ONLY,
     title: str = "Absolute Savings vs. Spot-Only Baseline",
@@ -540,7 +540,7 @@ def plot_savings_bar_chart(
     ax.axhline(0, color="black", lw=0.8)
     ax.bar_label(bars, fmt="€%.0f", padding=4, fontsize=9)
     ax.set_title(title, fontweight="bold", pad=10)
-    ax.set_ylabel("Annual Savings (€)  [positive = cheaper than spot]")
+    ax.set_ylabel("Annual Savings (€)")
     ax.yaxis.set_major_formatter(_EUR_FMT)
     ax.tick_params(axis="x", rotation=12)
 
@@ -551,6 +551,184 @@ def plot_savings_bar_chart(
     else:
         plt.close(fig)
 
+def plot_savings_bar_chart2(
+    all_sims: Sequence[pd.DataFrame],
+    reference_strategy: str = STRATEGY_SPOT_ONLY,
+    title: str = "Total Annual Cost & Savings vs. Spot-Only Baseline",
+    show: bool = True,
+    save_path: str | Path | None = None,
+) -> None:
+    """
+    Bar chart of total annual cost for all strategies, including the baseline.
+    Savings relative to the baseline are annotated inside the bars.
+
+    Parameters
+    ----------
+    all_sims : sequence of pd.DataFrame
+        Each DataFrame must contain ``strategy_name`` and ``total_cost``.
+    reference_strategy : str
+        Strategy used as the cost baseline (default: ``spot_only``).
+    """
+    series = _sim_to_series(all_sims)
+    if reference_strategy not in series:
+        raise PlotsError(f"Reference strategy '{reference_strategy}' not found in all_sims.")
+
+    # Calculate total costs for ALL strategies
+    costs = {name: float(s.sum()) for name, s in series.items()}
+    ref_total = costs[reference_strategy]
+
+    # Sort by total cost (ascending: cheapest first)
+    sorted_costs = dict(sorted(costs.items(), key=lambda item: item[1]))
+
+    names = list(sorted_costs.keys())
+    values = list(sorted_costs.values())
+
+    fig, ax = plt.subplots(figsize=(9, 5))
+
+    # Match the aesthetic of plot_resilience_metrics
+    palette = sns.color_palette("Blues_d", n_colors=len(names))
+    bars = ax.bar(names, values, color=palette, edgecolor="white", width=0.6)
+    
+    # Draw a baseline reference line to make savings visually obvious
+    ax.axhline(ref_total, color="black", linestyle="--", lw=1.2, label=f"Baseline ({reference_strategy})")
+
+    # Annotate bars with Total Cost (top) and Savings (inside)
+    for bar, name, val in zip(bars, names, values):
+        savings = ref_total - val
+        
+        # Label on top of the bar: Total Cost
+        ax.text(
+            bar.get_x() + bar.get_width() / 2, 
+            bar.get_height() + (max(values) * 0.02), # slightly above
+            f"€{val:,.0f}", 
+            ha='center', va='bottom', fontsize=10, fontweight='bold' if name == reference_strategy else 'normal'
+        )
+            
+        # Label inside the bar: Savings
+        if name != reference_strategy:
+            if savings > 0:
+                ax.text(
+                    bar.get_x() + bar.get_width() / 2, 
+                    bar.get_height() / 2, 
+                    f"Saved:\n€{savings:,.0f}", 
+                    ha='center', va='center', fontsize=9, color='white', fontweight='bold'
+                )
+            elif savings < 0:
+                ax.text(
+                    bar.get_x() + bar.get_width() / 2, 
+                    bar.get_height() / 2, 
+                    f"Loss:\n€{abs(savings):,.0f}", 
+                    ha='center', va='center', fontsize=9, color='white', fontweight='bold'
+                )
+
+    ax.set_title(title, fontweight="bold", pad=15)
+    ax.set_ylabel("Total Annual Cost (€)")
+    
+    # Expand Y-axis slightly to fit the top labels
+    ax.set_ylim(0, max(values) * 1.15)
+    
+    ax.yaxis.set_major_formatter(_EUR_FMT)
+    ax.tick_params(axis="x", rotation=15)
+    ax.legend(loc="upper left")
+
+    fig.tight_layout()
+    _resolve_save(fig, save_path)
+    if show:
+        plt.show()
+    else:
+        plt.close(fig)
+
+def plot_savings_bar_chart3(
+    all_sims: Sequence[pd.DataFrame],
+    reference_strategy: str = "spot_only",
+    title: str = "Net Margin Recovery vs. Spot Market",
+    show: bool = True,
+    save_path: str | Path | None = None,
+) -> None:
+    """
+    Executive-style horizontal bar chart of total annual savings (or losses).
+    High resolution and anti-overlap margins included.
+    """
+    series = _sim_to_series(all_sims)
+    if reference_strategy not in series:
+        raise PlotsError(f"Reference strategy '{reference_strategy}' not found in all_sims.")
+
+    ref_total = float(series[reference_strategy].sum())
+    savings = {
+        name: ref_total - float(s.sum())
+        for name, s in series.items()
+        if name != reference_strategy
+    }
+
+    if not savings:
+        raise PlotsError("No non-reference strategies found to plot.")
+
+    # Sort by savings descending (best first)
+    savings = dict(sorted(savings.items(), key=lambda item: item[1], reverse=True))
+
+    # Executive labels mapping
+    label_map = {
+        "heuristic_policy": "TailRisk DSS (Recommended)",
+        "heuristic_DSS": "TailRisk DSS (Recommended)",
+        "static_hedge": "Static Hedge (70% M1)",
+        "rl_policy": "RL Agent (Shadow Mode)"
+    }
+
+    names = [label_map.get(n, n) for n in savings.keys()]
+    values = list(savings.values())
+
+    # Sleek consulting colors: Deep teal for savings, muted coral for losses
+    colors = ["#2a9d8f" if v >= 0 else "#e76f51" for v in values]
+
+    # FIX 1: HIGH RESOLUTION (dpi=300) AND SLIGHTLY WIDER FIGURE
+    fig, ax = plt.subplots(figsize=(10, 5), dpi=300)
+    bars = ax.barh(names, values, color=colors, height=0.55, edgecolor="white")
+
+    # Remove all spines (borders) to clean up the chart
+    for spine in ax.spines.values():
+        spine.set_visible(False)
+
+    # Draw a clean vertical baseline at 0
+    ax.axvline(0, color='#333333', linewidth=1.5)
+
+    # Remove x-axis completely (we will label the bars directly)
+    ax.set_xticks([])
+    
+    # Clean y-axis styling
+    ax.tick_params(axis='y', length=0, labelsize=11, labelcolor='#333333')
+
+    # FIX 2: PREVENT OVERLAPPING BY EXPANDING X-AXIS LIMITS
+    max_val = max(abs(v) for v in values)
+    # Give 35% empty space on the left for the negative text, and 20% on the right
+    ax.set_xlim(-max_val * 0.35, max_val * 1.2)
+
+    # Add text labels directly outside the bars
+    for bar, val, color in zip(bars, values, colors):
+        # Format numbers elegantly (M for Millions, K for Thousands)
+        if abs(val) >= 1_000_000:
+            text = f"{'+' if val>0 else '-'}€{abs(val)/1_000_000:.2f}M"
+        else:
+            text = f"{'+' if val>0 else '-'}€{abs(val)/1_000:.0f}K"
+
+        # Position text just outside the end of the bar
+        if val >= 0:
+            ax.text(val + (max_val * 0.02), bar.get_y() + bar.get_height()/2, text,
+                    va='center', ha='left', color=color, fontweight='bold', fontsize=12)
+        else:
+            ax.text(val - (max_val * 0.02), bar.get_y() + bar.get_height()/2, text,
+                    va='center', ha='right', color=color, fontweight='bold', fontsize=12)
+
+    # Add Title and Subtitle with the baseline info
+    fig.suptitle(title, fontsize=14, fontweight='bold', y=0.98, x=0.52)
+    ax.set_title(f"Annual financial impact relative to the €{ref_total/1_000_000:.1f}M Spot-Only baseline", 
+                 fontsize=11, color='#666666', pad=15)
+
+    fig.tight_layout()
+    _resolve_save(fig, save_path)
+    if show:
+        plt.show()
+    else:
+        plt.close(fig)
 
 def plot_strategy_cost_comparison(
     all_sims: Sequence[pd.DataFrame],
@@ -605,8 +783,104 @@ def plot_strategy_cost_comparison(
     else:
         plt.close(fig)
 
+def plot_resilience_metrics2(
+    all_sims: Sequence[pd.DataFrame],
+    reference_strategy: str = STRATEGY_SPOT_ONLY,
+    title: str = "Resilience Metrics — 2025 Out-of-Sample",
+    show: bool = True,
+    save_path: str | Path | None = None,
+) -> pd.DataFrame:
+    """
+    Two-panel resilience comparison:
+      Left  : Daily cost volatility (std dev) per strategy.
+      Right : 90th-percentile daily cost (tail risk exposure) per strategy.
+      
+    High resolution (dpi=300) and executive naming included.
 
-def plot_resilience_metrics(
+    Parameters
+    ----------
+    all_sims : sequence of pd.DataFrame
+        Each DataFrame must contain ``strategy_name`` and ``total_cost``.
+    reference_strategy : str
+        Used to compute the "extreme day" threshold (P90 of reference costs).
+
+    Returns
+    -------
+    pd.DataFrame
+        Resilience metrics table (one row per strategy).
+    """
+    series = _sim_to_series(all_sims)
+    if reference_strategy not in series:
+        raise PlotsError(f"Reference strategy '{reference_strategy}' not found.")
+
+    spot_p90 = float(series[reference_strategy].quantile(0.90))
+
+    rows = []
+    for name, costs in series.items():
+        rows.append(
+            {
+                "strategy": name,
+                "volatility": round(float(costs.std()), 2),
+                "p90_daily_cost": round(float(costs.quantile(0.90)), 2),
+                "p95_daily_cost": round(float(costs.quantile(0.95)), 2),
+                "max_daily_cost": round(float(costs.max()), 2),
+                "n_extreme_days": int((costs > spot_p90).sum()),
+            }
+        )
+
+    risk_df = pd.DataFrame(rows).sort_values("volatility").reset_index(drop=True)
+
+    # Executive labels mapping to maintain consistency across all charts
+    label_map = {
+        "heuristic_policy": "TailRisk DSS (Recommended)",
+        "heuristic_DSS": "TailRisk DSS (Recommended)",
+        "static_hedge": "Static Hedge (70% M1)",
+        "rl_policy": "RL Agent (Shadow Mode)",
+        "spot_only": "Spot-Only (Baseline)"
+    }
+    
+    # Apply the clean names to the dataframe before plotting
+    risk_df["strategy"] = risk_df["strategy"].apply(lambda x: label_map.get(x, x))
+
+    # High resolution figure
+    fig, axes = plt.subplots(1, 2, figsize=(11, 4), dpi=300)
+
+    palette = sns.color_palette("Blues_d", n_colors=len(risk_df))
+    axes[0].bar(
+        risk_df["strategy"],
+        risk_df["volatility"],
+        color=palette,
+        edgecolor="white",
+    )
+    axes[0].set_title("Daily Cost Volatility  (Std Dev)", fontweight="bold")
+    axes[0].set_ylabel("Std Dev of Daily Cost (€)")
+    axes[0].yaxis.set_major_formatter(_EUR_FMT)
+    # Rotate slightly more to accommodate longer executive names
+    axes[0].tick_params(axis="x", rotation=25)
+
+    palette2 = sns.color_palette("Oranges_d", n_colors=len(risk_df))
+    axes[1].bar(
+        risk_df["strategy"],
+        risk_df["p90_daily_cost"],
+        color=palette2,
+        edgecolor="white",
+    )
+    axes[1].set_title("P90 Daily Cost  (Tail Risk Exposure)", fontweight="bold")
+    axes[1].set_ylabel("P90 Daily Cost (€)")
+    axes[1].yaxis.set_major_formatter(_EUR_FMT)
+    axes[1].tick_params(axis="x", rotation=25)
+
+    fig.suptitle(title, fontsize=12, fontweight="bold")
+    fig.tight_layout()
+    _resolve_save(fig, save_path)
+    if show:
+        plt.show()
+    else:
+        plt.close(fig)
+
+    return risk_df
+
+def plot_resilience_metrics1(
     all_sims: Sequence[pd.DataFrame],
     reference_strategy: str = STRATEGY_SPOT_ONLY,
     title: str = "Resilience Metrics — 2025 Out-of-Sample",
@@ -651,7 +925,7 @@ def plot_resilience_metrics(
 
     risk_df = pd.DataFrame(rows).sort_values("volatility").reset_index(drop=True)
 
-    fig, axes = plt.subplots(1, 2, figsize=(11, 4))
+    fig, axes = plt.subplots(1, 2, figsize=(11, 4), dpi=300)
 
     palette = sns.color_palette("Blues_d", n_colors=len(risk_df))
     axes[0].bar(
