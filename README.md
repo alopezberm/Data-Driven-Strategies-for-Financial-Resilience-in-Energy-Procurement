@@ -144,12 +144,6 @@ python -m src.data.generate_holidays_raw
 │       └── figures/      (executive dashboards, policy timelines)
 │
 ├── notebooks/
-│   ├── 01_data_extraction/
-│   ├── 02_data_understanding/
-│   ├── 03_preprocessing/
-│   ├── 04_modeling/
-│   ├── 05_decision_engine/
-│   ├── 06_backtesting/
 │   └── 08_reporting/
 │       └── 01_technical_report.ipynb   ← primary reference document
 │
