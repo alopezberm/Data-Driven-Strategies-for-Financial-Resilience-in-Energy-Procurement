@@ -668,8 +668,8 @@ def plot_savings_bar_chart3(
 
     # Executive labels mapping
     label_map = {
-        "heuristic_policy": "TailRisk DSS (Recommended)",
-        "heuristic_DSS": "TailRisk DSS (Recommended)",
+        "heuristic_policy": "TailRisk DSS",
+        "heuristic_DSS": "TailRisk DSS",
         "static_hedge": "Static Hedge (70% M1)",
         "rl_policy": "RL Agent (Shadow Mode)"
     }
