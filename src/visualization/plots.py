@@ -1367,3 +1367,260 @@ def plot_exec_summary_resilience_overlay(
             plt.show()
         else:
             plt.close(fig)
+
+
+def plot_net_profit_analysis(show: bool = True):
+    """
+    Executive stacked bar chart showing how the €73M Gross Margin 
+    is split between Energy Costs and Net Profit.
+    """
+    # Data from the Net Profit Analysis table
+    categories = ['Spot-Only\n(Status Quo)', 'TailRisk DSS\n(Recommended)']
+    
+    # Values in Millions
+    net_profit = [48.695297, 49.915472]
+    energy_cost = [24.304703, 23.084528]
+    gross_margin = 73.00
+
+    # High resolution figure
+    fig, ax = plt.subplots(figsize=(8.5, 5.5), dpi=300)
+
+    # Plot Net Profit (Bottom - Teal)
+    bars_profit = ax.bar(categories, net_profit, color='#2a9d8f', width=0.55, edgecolor='white', label='Net Annual Profit')
+    
+    # Plot Energy Cost (Top - Coral)
+    bars_cost = ax.bar(categories, energy_cost, bottom=net_profit, color='#e76f51', width=0.55, edgecolor='white', label='Annual Energy Cost')
+
+    # Clean up the chart (No spines, no y-ticks)
+    for spine in ax.spines.values():
+        spine.set_visible(False)
+    ax.set_yticks([])
+    ax.tick_params(axis='x', labelsize=12, length=0, pad=10)
+
+    # Annotate inside the bars
+    for i in range(2):
+        # Net Profit text
+        ax.text(i, net_profit[i]/2, f"€{net_profit[i]:.2f}M", 
+                ha='center', va='center', color='white', fontweight='bold', fontsize=13)
+        
+        # Energy Cost text
+        ax.text(i, net_profit[i] + energy_cost[i]/2, f"€{energy_cost[i]:.2f}M", 
+                ha='center', va='center', color='white', fontweight='bold', fontsize=13)
+        
+        # Gross Margin text on top
+        ax.text(i, gross_margin + 1, f"Gross Margin: €{gross_margin:.1f}M", 
+                ha='center', va='bottom', color='#333333', fontweight='bold', fontsize=11)
+
+    # Highlight the recovered margin with a visual bracket/line
+    # We draw a line from the old profit line to the new profit line
+    ax.plot([0.3, 0.7], [net_profit[0], net_profit[0]], color='#333333', linestyle='--', linewidth=1)
+    
+    # Add text explaining the recovery
+    ax.text(0.5, net_profit[0] + 0.6, "+€1.22M Recovered Margin", 
+            ha='center', va='bottom', color='#2a9d8f', fontweight='bold', fontsize=12,
+            bbox=dict(facecolor='white', edgecolor='none', alpha=0.8, pad=1))
+
+    # Titles and Legends
+    fig.suptitle("Annual Net Profit Analysis", fontsize=15, fontweight='bold', y=0.95)
+    ax.set_title("Capital preservation: Recovering bottom-line profit from energy volatility", 
+                 fontsize=11, color='#666666', pad=15)
+    
+    ax.legend(loc='lower center', bbox_to_anchor=(0.5, -0.15), ncol=2, frameon=False, fontsize=11)
+
+    fig.tight_layout()
+    plt.show()
+
+def plot_executive_kpi_dashboard(show: bool = True, save_path: str = None):
+    """
+    Generates an executive KPI dashboard visual for the Final Verdict deployment parameters.
+    """
+    fig, ax = plt.subplots(figsize=(11, 5.5), dpi=300)
+    
+    # Quitar los ejes por completo
+    ax.set_xlim(0, 3)
+    ax.set_ylim(0, 2)
+    ax.axis('off')
+
+    # Datos (Financials en la fila de arriba, Operations en la de abajo)
+    kpis = [
+        # x, y, title, value, notes, color
+        (0.5, 1.5, "Annual Net Profit Recovery", "+€1.22M", "vs. spot-only status quo", "#2a9d8f"),
+        (1.5, 1.5, "Net Profit Improvement", "+2.50%", "net margin delta", "#2a9d8f"),
+        (2.5, 1.5, "Volatility Reduction", "-46%", "daily cost std dev", "#2a9d8f"),
+        (0.5, 0.5, "Initial Hedge Threshold", "8 €/MWh", "conservative; builds trust", "#457b9d"),
+        (1.5, 0.5, "Steady-State Threshold", "15-20 €", "after 6-12m live validation", "#457b9d"),
+        (2.5, 0.5, "Daily Decision Window", "13:00 CET", "following OMIE auction close", "#457b9d"),
+    ]
+
+    # Dibujar las tarjetas (Cards)
+    for x, y, title, value, notes, color in kpis:
+        # Cajas de fondo
+        rect = plt.Rectangle((x - 0.45, y - 0.4), 0.9, 0.8,
+                             facecolor='#f8f9fa', edgecolor=color,
+                             linewidth=2, alpha=0.8)
+        ax.add_patch(rect)
+        
+        # Título de la métrica
+        ax.text(x, y + 0.25, title, ha='center', va='center', 
+                fontsize=11, fontweight='bold', color='#333333')
+        
+        # Valor gigante en el centro
+        ax.text(x, y, value, ha='center', va='center', 
+                fontsize=24, fontweight='bold', color=color)
+        
+        # Notas pequeñas abajo
+        ax.text(x, y - 0.25, notes, ha='center', va='center', 
+                fontsize=9, fontstyle='italic', color='#666666')
+
+    # Título principal del Dashboard
+    fig.suptitle("TailRisk DSS: Deployment Parameters & Impact", 
+                 fontsize=16, fontweight='bold', y=0.98)
+    ax.set_title("Financial achievements (Top) and Operational guidelines (Bottom)", 
+                 fontsize=11, color='#666666', pad=10)
+
+    fig.tight_layout()
+    
+    if save_path:
+        fig.savefig(save_path, bbox_inches='tight')
+
+    plt.show()
+
+import pandas as pd
+import matplotlib.pyplot as plt
+import seaborn as sns
+from typing import Sequence
+
+def plot_combined_executive_dashboard(
+    all_sims: Sequence[pd.DataFrame],
+    reference_strategy: str = "spot_only", # Usa STRATEGY_SPOT_ONLY si lo tienes importado
+    title: str = "Executive Summary: Financial Impact & Resilience Metrics (2025)",
+    show: bool = True,
+    save_path=None,
+) -> pd.DataFrame:
+    """
+    Three-panel executive dashboard with unified formatting:
+      Left   : Net Margin Recovery vs Baseline
+      Center : Daily cost volatility (Std Dev)
+      Right  : 90th-percentile daily cost (Tail risk exposure)
+    """
+    series = _sim_to_series(all_sims)
+    if reference_strategy not in series:
+        raise ValueError(f"Reference strategy '{reference_strategy}' not found.")
+
+    ref_total = float(series[reference_strategy].sum())
+    spot_p90 = float(series[reference_strategy].quantile(0.90))
+
+    # Nombres elegantes para el Executive Summary
+    label_map = {
+        "heuristic_policy": "TailRisk DSS",
+        "heuristic_DSS": "TailRisk DSS",
+        "static_hedge": "Static Hedge",
+        "rl_policy": "RL Agent",
+        "spot_only": "Spot-Only"
+    }
+
+    # Procesar todos los datos en un solo DataFrame
+    rows = []
+    for name, costs in series.items():
+        rows.append({
+            "raw_name": name,
+            "strategy": label_map.get(name, name),
+            "total_cost": float(costs.sum()),
+            "savings": ref_total - float(costs.sum()),
+            "volatility": float(costs.std()),
+            "p90_daily_cost": float(costs.quantile(0.90))
+        })
+    df = pd.DataFrame(rows)
+
+    # Crear la figura panorámica con 3 subplots
+    fig, axes = plt.subplots(1, 3, figsize=(16, 6), dpi=300)
+
+    # Función auxiliar para limpiar cada panel
+    def clean_panel(ax):
+        for spine in ax.spines.values():
+            spine.set_visible(False)
+        ax.set_yticks([])
+        ax.axhline(0, color='#333333', linewidth=1.2)
+        ax.tick_params(axis='x', rotation=30, labelsize=11)
+        for label in ax.get_xticklabels():
+            label.set_ha('right') # Alinea el texto al rotarlo
+
+    # ==========================================
+    # PANEL 1 (IZQUIERDA): Ahorros (Vertical)
+    # ==========================================
+    df_sav = df[df['raw_name'] != reference_strategy].sort_values("savings", ascending=False).reset_index(drop=True)
+    colors = ["#2a9d8f" if v >= 0 else "#e76f51" for v in df_sav["savings"]]
+    
+    bars0 = axes[0].bar(df_sav["strategy"], df_sav["savings"], color=colors, width=0.65, edgecolor="white")
+    clean_panel(axes[0])
+    
+    # Ajustar límites para que quepa el texto
+    max_sav = df_sav["savings"].max()
+    min_sav = df_sav["savings"].min()
+    axes[0].set_ylim(min_sav * 1.25 if min_sav < 0 else 0, max_sav * 1.2)
+
+    # Etiquetas encima/debajo de las barras
+    for bar, val, color in zip(bars0, df_sav["savings"], colors):
+        text = f"{'+' if val>0 else '-'}€{abs(val)/1_000_000:.2f}M" if abs(val)>=1_000_000 else f"{'+' if val>0 else '-'}€{abs(val)/1_000:.0f}K"
+        y_pos = bar.get_height() + (max_sav * 0.05) if val >= 0 else bar.get_height() - (abs(min_sav) * 0.05)
+        va = 'bottom' if val >= 0 else 'top'
+        axes[0].text(bar.get_x() + bar.get_width()/2, y_pos, text,
+                     va=va, ha='center', color=color, fontweight='bold', fontsize=12)
+
+    axes[0].set_title(f"Margin Recovery\n(vs. €{ref_total/1_000_000:.1f}M Baseline)", fontweight="bold", pad=15)
+
+    # ==========================================
+    # PANEL 2 (CENTRO): Volatilidad (Vertical)
+    # ==========================================
+    df_vol = df.sort_values("volatility").reset_index(drop=True)
+    palette_vol = sns.color_palette("Blues_d", n_colors=len(df_vol))
+    
+    bars1 = axes[1].bar(df_vol["strategy"], df_vol["volatility"], color=palette_vol, width=0.65, edgecolor="white")
+    clean_panel(axes[1])
+    
+    max_vol = df_vol["volatility"].max()
+    axes[1].set_ylim(0, max_vol * 1.15)
+
+    for bar, val in zip(bars1, df_vol["volatility"]):
+        text = f"€{val/1_000:.1f}K"
+        axes[1].text(bar.get_x() + bar.get_width()/2, bar.get_height() + (max_vol * 0.02), text,
+                     va='bottom', ha='center', color='#333333', fontweight='bold', fontsize=11)
+
+    axes[1].set_title("Daily Cost Volatility\n(Std Dev)", fontweight="bold", pad=15)
+
+    # ==========================================
+    # PANEL 3 (DERECHA): P90 Tail Risk (Vertical)
+    # ==========================================
+    df_p90 = df.sort_values("volatility").reset_index(drop=True) # Mismo orden que el centro
+    palette_p90 = sns.color_palette("Oranges_d", n_colors=len(df_p90))
+    
+    bars2 = axes[2].bar(df_p90["strategy"], df_p90["p90_daily_cost"], color=palette_p90, width=0.65, edgecolor="white")
+    clean_panel(axes[2])
+    
+    max_p90 = df_p90["p90_daily_cost"].max()
+    axes[2].set_ylim(0, max_p90 * 1.15)
+
+    for bar, val in zip(bars2, df_p90["p90_daily_cost"]):
+        text = f"€{val/1_000:.1f}K"
+        axes[2].text(bar.get_x() + bar.get_width()/2, bar.get_height() + (max_p90 * 0.02), text,
+                     va='bottom', ha='center', color='#333333', fontweight='bold', fontsize=11)
+
+    axes[2].set_title("P90 Daily Cost\n(Tail Risk Exposure)", fontweight="bold", pad=15)
+
+    # ==========================================
+    # AJUSTES FINALES
+    # ==========================================
+    fig.suptitle(title, fontsize=16, fontweight="bold", y=1.05)
+    fig.tight_layout()
+    
+    try:
+        _resolve_save(fig, save_path)
+    except NameError:
+        pass
+        
+    if show:
+        plt.show()
+    else:
+        plt.close(fig)
+
+    return df
